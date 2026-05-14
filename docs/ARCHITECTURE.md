@@ -544,10 +544,19 @@ Path                                 Method  Auth      Handler
 /oauth/authorize                    POST    None      oauthController.authorizeSubmit
 /oauth/token                        POST    None      oauthController.token
 /oauth/userinfo                     GET     Bearer    oauthController.userinfo
+/                                   GET     None      Serves public/index.html (landing page)
+/console                            GET     None      Serves public/console/index.html (React SPA)
+/dashboard                          GET     None      Serves public/dashboard.html (user dashboard)
+
+Static files served:
+  /api-tester.html                  GET     None      API testing tool
+  /logo.png                         GET     None      S-Auth logo
+  /console/assets/*                 GET     None      Console SPA bundles
 
 New endpoints added:
   POST /auth/refresh   → Exchange refresh token for new JWT + rotated refresh token
   POST /auth/logout    → Blacklist current JWT's jti (requires valid JWT)
+  GET /dashboard       → Unified user dashboard (login, profile, apps, security)
 ```
 
 ---

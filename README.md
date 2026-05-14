@@ -277,6 +277,9 @@ npm run dev
 ```
 Then open `http://localhost:3000` in your browser.
 
+**User Dashboard:**
+Open `http://localhost:3000/dashboard` to sign in and manage your profile, OAuth apps, account settings, and security.
+
 **Simple HTML Test:**
 Open `public/index.html` in a browser for basic testing.
 
@@ -322,8 +325,11 @@ S-auth/
 │   ├── api.md                   # Detailed API docs
 │   └── SECURITY.md              # Security guide
 ├── public/
-│   ├── index.html               # Local test UI
-│   └── test.html                # Standalone test UI
+│   ├── index.html               # Landing page
+│   ├── dashboard.html           # User dashboard (profile, apps, security)
+│   ├── api-tester.html          # API testing tool
+│   ├── logo.png                 # S-Auth logo
+│   └── console/                 # Developer Console SPA (React/Vite)
 ├── scripts/
 │   └── test-email.js            # Email testing
 └── test.js                      # API test suite

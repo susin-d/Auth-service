@@ -7,6 +7,7 @@
   <meta name="description" content="Add 'Sign in with S-Auth' to your application in minutes. Enterprise-grade authentication with OAuth2, PKCE, and single sign-on.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="/logo.png">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -86,6 +87,7 @@
     }
     .nav-brand img { width: 36px; height: 36px; border-radius: 8px; }
     .nav-brand span { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.5px; }
+    .hamburger { display: none; background: none; border: none; color: var(--text); font-size: 1.5rem; cursor: pointer; padding: 0.25rem; }
     .nav-links { display: flex; gap: 2rem; align-items: center; }
     .nav-links a {
       color: var(--text-muted); text-decoration: none; font-size: 0.9375rem;
@@ -269,7 +271,9 @@
       .steps { grid-template-columns: 1fr 1fr; }
       .steps::before { display: none; }
       .code-section { grid-template-columns: 1fr; }
-      .nav-links { display: none; }
+      .hamburger { display: block; }
+      .nav-links { display: none; flex-direction: column; position: absolute; top: 100%; left: 0; right: 0; background: rgba(5,5,7,0.95); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); padding: 1rem; gap: 1rem; }
+      .nav-links.show { display: flex; }
     }
   </style>
 </head>
@@ -289,12 +293,14 @@
       <img src="/logo.png" alt="S-Auth">
       <span>S-Auth</span>
     </a>
-    <div class="nav-links">
+    <button class="hamburger" onclick="document.getElementById('navLinks').classList.toggle('show')" aria-label="Toggle navigation">☰</button>
+    <div class="nav-links" id="navLinks">
       <a href="#features">Features</a>
       <a href="#how-it-works">How It Works</a>
       <a href="#integration">Integration</a>
       <a href="/oauth/authorize" class="btn btn-sm btn-ghost">Try Demo</a>
-      <a href="/api/v1/auth" class="btn btn-sm btn-primary">API Docs</a>
+      <a href="/dashboard#login" class="btn btn-sm btn-ghost">Sign In</a>
+      <a href="/api-tester.html" class="btn btn-sm btn-primary">API Docs</a>
     </div>
   </div>
 </nav>
@@ -430,8 +436,8 @@ console.<span class="fn">log</span>(user);
           <li>Any OAuth2-compatible library</li>
         </ul>
         <div style="margin-top: 2rem; display: flex; gap: 1rem;">
-          <a href="/docs/OAUTH-PROVIDER.md" class="btn btn-primary btn-sm" target="_blank">Read the Docs</a>
-          <a href="https://github.com" class="btn btn-ghost btn-sm" target="_blank">View on GitHub</a>
+          <a href="/api-tester.html" class="btn btn-primary btn-sm">API Tester</a>
+          <a href="/dashboard#login" class="btn btn-ghost btn-sm">Dashboard →</a>
         </div>
       </div>
       <div class="glass" style="padding: 2rem;">
@@ -469,7 +475,7 @@ console.<span class="fn">log</span>(user);
   <div class="cta">
     <h2>Ready to Authenticate?</h2>
     <p>Start building with S-Auth today. No credit card. No lock-in. Just security.</p>
-    <a href="#integration" class="btn btn-primary">Get Your Client ID →</a>
+    <a href="/dashboard#login" class="btn btn-primary">Go to Dashboard →</a>
   </div>
 </section>
 

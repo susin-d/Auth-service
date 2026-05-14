@@ -92,15 +92,11 @@ Authenticate with email and password.
 ### Verify Email
 **`GET /api/v1/auth/verify-email?token=VERIFICATION_TOKEN`**
 
-Verify user email address.
+Verify user email address. Returns an HTML page (not JSON).
 
-**Response (200):**
-```json
-{
-  "success": true,
-  "message": "Email verified successfully"
-}
-```
+**Response (200):** HTML success page with animated confirmation, user email, and "Close Window" button with fallback "Go to Sign In" link.
+
+**Response (400):** HTML error page with error details and "Go to Home" link.
 
 ---
 

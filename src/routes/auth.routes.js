@@ -15,8 +15,7 @@ const signupLimiter = rateLimit({
   max: 5,
   message: { error: 'Too many signup attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => req.ip || req.connection.remoteAddress
+  legacyHeaders: false
 });
 
 // Public Routes

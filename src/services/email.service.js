@@ -49,19 +49,71 @@ class EmailService {
 
     sendSmtpEmail.htmlContent = `
       <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-          <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
-            <h1 style="color: #4285F4;">Verify Your Email Address</h1>
-            <p>Thank you for signing up! Please verify your email address to activate your account.</p>
-            <div style="margin: 30px 0;">
-              <a href="${verificationLink}" 
-                 style="background-color: #4285F4; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                Verify Email Address
-              </a>
-            </div>
-            <p style="color: #666; font-size: 14px;">If you didn't create this account, you can safely ignore this email.</p>
-            <p style="color: #666; font-size: 14px;">This link will expire in 24 hours.</p>
-          </div>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Verify Your Email Address</title>
+        </head>
+        <body style="margin: 0; padding: 0; background-color: #f4f4f4; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f4f4f4; min-height: 100vh;">
+            <tr>
+              <td align="center" style="padding: 40px 20px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px;">
+                  <tr>
+                    <td align="center" style="padding: 30px 0;">
+                      <h1 style="color: #4285F4; font-size: 28px; margin: 0; font-weight: 700;">Verify Your Email</h1>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 2px 12px rgba(0,0,0,0.08);">
+                      <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                          <td align="center" style="padding-bottom: 20px;">
+                            <div style="font-size: 48px; line-height: 1;">📧</div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="color: #333333; font-size: 16px; line-height: 1.5; padding-bottom: 20px;">
+                            Thank you for signing up! Please verify your email address to activate your account.
+                          </td>
+                        </tr>
+                        <tr>
+                          <td align="center" style="padding: 30px 0;">
+                            <table role="presentation" cellpadding="0" cellspacing="0">
+                              <tr>
+                                <td align="center" style="background-color: #4285F4; border-radius: 8px;">
+                                  <a href="${verificationLink}" target="_blank" style="background-color: #4285F4; color: #ffffff; padding: 14px 36px; text-decoration: none; border-radius: 8px; display: inline-block; font-size: 16px; font-weight: 600; letter-spacing: 0.5px; border: 1px solid #4285F4;">Verify Email Address</a>
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding-top: 10px; border-top: 1px solid #e8e8e8;">
+                            <p style="color: #888888; font-size: 14px; line-height: 1.5; margin: 20px 0 0 0;">
+                              <strong style="color: #666;">Didn't create this account?</strong><br>
+                              You can safely ignore this email. Only the person who created this account can access it.
+                            </p>
+                            <p style="color: #888888; font-size: 13px; line-height: 1.5; margin: 15px 0 0 0;">
+                              ⏰ This verification link will expire in <strong>24 hours</strong>.
+                            </p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td align="center" style="padding: 30px 20px 10px;">
+                      <p style="color: #aaaaaa; font-size: 12px; line-height: 1.5; margin: 0;">
+                        &copy; 2026 Starviel. All rights reserved.<br>
+                        This is an automated message, please do not reply to this email.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
         </body>
       </html>`;
     

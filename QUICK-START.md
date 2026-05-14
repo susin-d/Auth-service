@@ -70,9 +70,13 @@ npm run dev
 Frontend runs on `http://localhost:3000`
 
 ### 6. Test the APIs 🎉
-Open `http://localhost:3000` in your browser and test:
+Open `http://localhost:3000` in your browser to see the landing page.
+Open `http://localhost:3000/dashboard` for the user dashboard (sign in, manage profile, OAuth apps, security settings).
+
+Test endpoints:
 - ✅ User Signup
 - ✅ User Signin
+- ✅ User Dashboard
 - ✅ Google OAuth
 - ✅ Delete Account
 
@@ -155,11 +159,11 @@ npm run dev
 ```
 Open `http://localhost:3000`
 
-**Option 2: Simple HTML**
-Open `public/index.html` in browser
+**Option 2: API Tester**
+Open `http://localhost:3000/api-tester.html` in browser — interactive tool to test all endpoints
 
-**Option 3: Standalone Test Page**
-Open `public/test.html` and configure API URL
+**Option 3: Simple HTML**
+Open `public/index.html` in browser
 
 **Option 4: cURL/Postman**
 Use API documentation from `docs/api.md`

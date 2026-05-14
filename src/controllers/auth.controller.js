@@ -515,6 +515,24 @@ exports.verifyEmail = async (req, res) => {
           .close-btn:hover {
             background: #5568d3;
           }
+          .close-fallback {
+            display: none;
+            margin-top: 20px;
+          }
+          .link-btn {
+            display: inline-block;
+            background: #48bb78;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: background 0.3s;
+          }
+          .link-btn:hover {
+            background: #38a169;
+          }
           .footer {
             margin-top: 25px;
             padding-top: 20px;
@@ -541,12 +559,28 @@ exports.verifyEmail = async (req, res) => {
             <p>Use your email and password to access your account.</p>
           </div>
           
-          <button class="close-btn" onclick="window.close()">Close Window</button>
+          <button class="close-btn" id="closeBtn" onclick="closeWindow()">Close Window</button>
+          
+          <div id="closeFallback" class="close-fallback">
+            <p style="color: #718096; margin-bottom: 15px; font-size: 14px;">You can now safely close this tab or continue to sign in.</p>
+            <a href="${process.env.FRONTEND_URL}/login" class="link-btn">Go to Sign In</a>
+          </div>
           
           <div class="footer">
             © 2026 Starviel • Secure Authentication Service
           </div>
         </div>
+        <script>
+          function closeWindow() {
+            var btn = document.getElementById('closeBtn');
+            btn.textContent = 'Closing...';
+            btn.disabled = true;
+            window.close();
+            setTimeout(function() {
+              document.getElementById('closeFallback').style.display = 'block';
+            }, 1000);
+          }
+        </script>
       </body>
       </html>
     `);
@@ -581,7 +615,21 @@ exports.verifyEmail = async (req, res) => {
             <strong>Error:</strong> ${err.message}
           </div>
           <p>Please contact support or try signing up again.</p>
-          <button onclick="window.close()">Close Window</button>
+          <button class="close-btn" onclick="closeWindow(this)">Close Window</button>
+          <div id="closeFallback" style="display:none;margin-top:20px;">
+            <p style="color:#718096;margin-bottom:15px;font-size:14px;">You can now close this tab.</p>
+            <a href="${process.env.FRONTEND_URL}/" style="display:inline-block;background:#667eea;color:white;padding:12px 30px;border-radius:8px;font-size:16px;font-weight:600;text-decoration:none;">Go to Home</a>
+          </div>
+          <script>
+            function closeWindow(btn) {
+              btn.textContent = 'Closing...';
+              btn.disabled = true;
+              window.close();
+              setTimeout(function() {
+                document.getElementById('closeFallback').style.display = 'block';
+              }, 1000);
+            }
+          </script>
         </div>
       </body>
       </html>

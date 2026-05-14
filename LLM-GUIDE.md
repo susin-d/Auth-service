@@ -619,6 +619,12 @@ S-Auth/
 │   └── test-production.js            ← Smoke test all endpoints
 ├── package.json                      ← Entry: src/server.js
 ├── .env.example                      ← Template for environment variables
+├── public/
+│   ├── index.html                    ← Marketing landing page (served at /)
+│   ├── dashboard.html                ← User dashboard SPA (served at /dashboard)
+│   ├── api-tester.html               ← Interactive API testing tool
+│   ├── logo.png                      ← S-Auth logo
+│   └── console/                      ← Developer Console SPA (React, served at /console)
 └── LLM-GUIDE.md                      ← This file
 ```
 

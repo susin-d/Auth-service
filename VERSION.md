@@ -1,6 +1,37 @@
 # S-Auth Microservice - Version History
 
-## Version 2.0.0 (Current)
+## Version 2.1.0 (Current)
+**Release Date:** May 14, 2026  
+**Status:** Production Ready ✅
+
+### New Features
+- **User Dashboard** (`/dashboard`) — New standalone single-page application for authenticated users to manage their account:
+  - Login form with JWT token storage
+  - Account summary with email, verification status, role, member since
+  - Profile editing (full_name, display_name, avatar_url, bio, phone, date_of_birth, country, city, website_url)
+  - OAuth application management (list, create, delete apps)
+  - Security overview (email status, connected providers, last sign-in, sign out)
+  - Account deletion with confirmation
+  - Dark theme with animated blob background matching the landing page
+- **Email Verification UI Fix** — Close window button now shows a fallback "Go to Sign In" link after 1 second if `window.close()` is blocked by the browser
+- **Email Template Redesign** — Verification email now uses table-based layout for better email client compatibility, with improved styling and footer
+
+### Landing Page Improvements (`public/index.html`)
+- Added **mobile hamburger menu** for navigation on small screens
+- Added **"Sign In"** button linking to `/dashboard#login`
+- Fixed **"API Docs"** link to point to `/api-tester.html`
+- Fixed **broken documentation links** throughout the page
+- Updated **CTA** to link to `/dashboard` instead of an anchor section
+- Added **favicon** reference
+
+### Changes from v2.0.0
+- New route: `GET /dashboard` → serves `public/dashboard.html`
+- Landing page navigation overhaul with mobile support
+- Email template redesigned for better rendering across email clients
+
+---
+
+## Version 2.0.0
 **Release Date:** April 30, 2026  
 **Status:** Production Ready ✅
 

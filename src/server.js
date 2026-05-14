@@ -83,6 +83,10 @@ app.get(/^\/console/, (req, res) => {
   res.sendFile(require('path').join(__dirname, '../public/console/index.html'));
 });
 
+app.get('/dashboard', (req, res) => {
+  res.sendFile(require('path').join(__dirname, '../public/dashboard.html'));
+});
+
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'UP', service: 'auth-service' });
 });
