@@ -9,45 +9,53 @@ The Auth service is a **standalone Express.js microservice** that acts as both:
 - An **OAuth 2.0 Authorization Server** ("Continue with Starviel")
 - A **Google OAuth relay** (sign in with Google)
 
-It uses **Neon PostgreSQL** (serverless Postgres) and issues **JWT tokens** signed with HS256.
+It uses **Neon PostgreSQL** (serverless Postgres) and issues **JWT tokens** signed with HS256. Every request gets a **correlation ID** (`X-Request-Id`) for tracing across logs.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  LAYERED ARCHITECTURE                                                     │
 ├──────────────────────────────────────────────────────────────────────────┤
-│  ROUTING LAYER              auth.routes.js + oauth.routes.js              │
-│  (Express Router)           request routing, param extraction            │
+│  CORRELATION ID           crypto.randomUUID() → X-Request-Id header       │
+│  (server.js)              attached to every request + error responses     │
 ├──────────────────────────────────────────────────────────────────────────┤
-│  MIDDLEWARE LAYER           helmet → cors → morgan → body parser →       │
-│  (Express middleware)       cookie-parser → auth.middleware (protect)    │
-│                             validator.middleware (express-validator)     │
+│  ROUTING LAYER            auth.routes.js + oauth.routes.js                │
+│  (Express Router)         rate limiting on signup (5/15min per IP)        │
 ├──────────────────────────────────────────────────────────────────────────┤
-│  CONTROLLER LAYER           auth.controller.js + oauth.controller.js     │
-│  (Request handlers)         input sanitization, error classification,    │
-│                             response formatting, status codes            │
+│  MIDDLEWARE LAYER         helmet → cors → morgan → body parser →         │
+│  (Express middleware)     cookie-parser → auth.middleware (protect)       │
+│                           → checks JWT jti against token blacklist        │
+│                           validator.middleware (express-validator)        │
 ├──────────────────────────────────────────────────────────────────────────┤
-│  SERVICE LAYER                                                        │
-│  auth.service.js            signUp, signIn, verifyEmail, resendVerif,   │
-│                             deleteAccount, getProfile, updateProfile,    │
-│                             getGoogleAuthUrl, exchangeGoogleCode,         │
-│                             requestPasswordReset, resetPassword           │
-│                             generateAuthCode, exchangeAuthCode           │
+│  CONTROLLER LAYER         auth.controller.js + oauth.controller.js       │
+│  (Request handlers)       input sanitization, error classification,      │
+│                           response formatting, status codes              │
+├──────────────────────────────────────────────────────────────────────────┤
+│  SERVICE LAYER                                                          │
+│  auth.service.js          signUp, signIn, verifyEmail, resendVerif,      │
+│                           deleteAccount, getProfile, updateProfile,      │
+│                           getGoogleAuthUrl, exchangeGoogleCode,           │
+│                           requestPasswordReset, resetPassword,            │
+│                           generateAuthCode, exchangeAuthCode,             │
+│                           generateRefreshToken, exchangeRefreshToken     │
 │                                                                           │
-│  oauth.service.js           registerClient, listClients, validateClient, │
-│                             validateScopes, generateAuthorizationCode,   │
-│                             exchangeCode, getUserInfoFromToken,          │
-│                             getAllowedOrigins                            │
+│  oauth.service.js         registerClient, listClients, validateClient,   │
+│                           validateScopes, generateAuthorizationCode,     │
+│                           exchangeCode, getUserInfoFromToken,            │
+│                           getAllowedOrigins                              │
 │                                                                           │
-│  email.service.js           sendVerificationEmail, sendWelcomeEmail,     │
-│                             sendAccountDeletionEmail, sendBroadcastEmail │
+│  email.service.js         sendVerificationEmail, sendWelcomeEmail,       │
+│                           sendPasswordResetEmail,                         │
+│                           sendAccountDeletionEmail, sendBroadcastEmail    │
+│                           (all with exponential backoff retry: 1s→2s→4s) │
 ├──────────────────────────────────────────────────────────────────────────┤
 │  UTILITY LAYER                                                           │
-│  login.tracker.js           failed attempt tracking, lockout, persistence│
-│  audit.logger.js            security event logging (console + DB)        │
-│  security.config.js         JWT expiry, CORS, password rules, cookies    │
+│  login.tracker.js         failed attempt tracking, lockout, persistence  │
+│  audit.logger.js          security event logging (console + DB)          │
+│  token.blacklist.js       JWT jti blacklist (in-memory Set + DB persist) │
+│  security.config.js       JWT expiry, CORS, password rules, cookies      │
 ├──────────────────────────────────────────────────────────────────────────┤
-│  DATA LAYER                PostgreSQL (Neon serverless)                  │
-│  db.js                     pg Pool with SSL, connection management       │
+│  DATA LAYER              PostgreSQL (Neon serverless)                    │
+│  db.js                   pg Pool with SSL, reconnection retry (5 tries)  │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -98,11 +106,16 @@ EXECUTE FUNCTION create_user_profile();
 
 ### 2.3 `user_auth_tokens` — One-Time Tokens
 
-Stores 4 token types:
-- `email_verification` — 24h expiry, used when user clicks verify link
-- `password_reset` — 1h expiry, used for password reset
-- `oauth_csrf` — 10min expiry, used for Google OAuth state validation
-- `oauth_code` — 60s expiry, one-time code after Google callback
+Stores 6 token types:
+
+| Token Type | Purpose | Expiry | Single-Use |
+|------------|---------|--------|------------|
+| `email_verification` | Email verification link | 24h | Yes |
+| `password_reset` | Password reset link | 1h | Yes |
+| `oauth_csrf` | Google OAuth CSRF state | 10min | Yes |
+| `oauth_code` | Post-Google-auth one-time code | 60s | Yes |
+| `refresh_token` | Long-lived refresh token (rotation) | 30 days | Yes (rotated) |
+| `jwt_blacklist` | Revoked JWT `jti` values | Until JWT expires | N/A |
 
 ### 2.4 `user_oauth` — Linked OAuth Providers
 
@@ -125,7 +138,7 @@ is_confidential:    BOOLEAN               ← has secret vs PKCE
 
 ### 2.7 `audit_logs` — Security Events
 
-Stores critical events: login failures, account lockouts, account deletions, Google OAuth failures. Each event has: event type, JSON data, timestamp, IP address, user ID.
+Stores critical events: login failures, account lockouts, account deletions, Google OAuth failures, logout events, token refreshes. Each event has: event type, JSON data, timestamp, IP address, user ID.
 
 ### 2.8 `login_attempts` — Persistent Failed Attempts
 
@@ -155,12 +168,22 @@ This is the **primary data source** returned in API responses. It intentionally 
 ```
 Request Body: { "email": "user@example.com", "password": "SecurePass123!" }
 
+0. CORRELATION ID
+   req.headers['x-request-id'] || crypto.randomUUID()
+   → added as X-Request-Id response header
+   → included in all error responses for debugging
+
+0b. RATE LIMITER
+   express-rate-limit checks IP-based counter
+   → 5 signups max per 15 minutes per IP
+   → 429 if exceeded: "Too many signup attempts."
+
 1. EXPRESS PIPELINE
    helmet              → sets security headers
    cors                → checks origin (dev: all, prod: whitelist/DB)
    morgan('dev')       → logs: POST /api/v1/auth/signup 201
    express.json        → parses body
-   express.urlencoded  → parses URL-encoded (for form submissions)
+   express.urlencoded  → parses URL-encoded
 
 2. VALIDATOR MIDDLEWARE (signupValidation)
    check('email').isEmail().normalizeEmail()
@@ -177,41 +200,33 @@ Request Body: { "email": "user@example.com", "password": "SecurePass123!" }
 4. SERVICE (auth.service.js → signUp)
    a. Check duplicate:
         SELECT id FROM users WHERE email = $1
-        → if exists, throw "already registered" (422)
 
    b. Hash password:
         bcrypt.hash(password, 12) → ~250ms, $2b$12$...
 
    c. Create user:
-        INSERT INTO users (email, password_hash, email_verified, account_status)
-        VALUES ($1, $2, false, 'active') RETURNING *
+        INSERT INTO users ... RETURNING *
         → trigger auto-creates user_profiles row
 
    d. Generate verification token:
-        crypto.randomBytes(32).toString('hex') → 64-char hex
-        INSERT INTO user_auth_tokens (user_id, token_type='email_verification',
-                                      token, expires_at=NOW()+24h)
+        INSERT INTO user_auth_tokens (token_type='email_verification',
+                                       expires_at=NOW()+24h)
 
-   e. Send email (async, fire-and-forget):
+   e. Send email (async, fire-and-forget, retry 1s→2s→4s):
         EmailService.sendVerificationEmail(email, verificationLink)
-        → Brevo API: POST https://api.brevo.com/v3/smtp/email
 
-   f. Return:
-        { id: newUser.id, email: newUser.email, created_at }
+   f. Return: { id, email, created_at }
 
-5. RESPONSE FORMATTING (controller)
+5. RESPONSE
    → 201 { message: "User created", user_id: "uuid" }
-   (or error with appropriate 4xx status)
 ```
 
 ### 3.2 Sign In (`POST /api/v1/auth/signin`)
 
 ```
 1. ACCOUNT LOCKOUT CHECK (loginTracker.isLocked)
-   • Check in-memory Map first (fast path)
-   • If not in memory, check login_attempts table
-   • If locked (5+ attempts in 15min): return { locked: true, remainingMinutes }
-   → 429 "Account temporarily locked"
+   • In-memory Map first → fallback to login_attempts table
+   • If locked (5 fails/15min) → 429 with remainingMinutes
 
 2. AUTHENTICATION (AuthService.signIn)
    a. Get user:
@@ -221,252 +236,254 @@ Request Body: { "email": "user@example.com", "password": "SecurePass123!" }
         SELECT password_hash FROM users WHERE id = $1
 
    c. Google OAuth check:
-        if password_hash === 'GOOGLE_OAUTH' → throw (must use Google sign-in)
+        if password_hash === 'GOOGLE_OAUTH' → throw (must use Google)
 
    d. Email verification check:
         if !user.email_verified → throw "verify your email"
 
    e. Password verification:
         bcrypt.compare(password, password_hash)
-        → false → throw "Invalid email or password"
-               → controller records failed attempt,
-                 checks if lockout threshold hit,
-                 returns 401 or 429
 
-   f. Update last_signin_at
+   f. Generate JWT with jti:
+        crypto.randomUUID() → jti
+        jwt.sign({ sub, email, role, jti }, JWT_SECRET, { expiresIn: '1h' })
 
-   g. Generate JWT:
-        jwt.sign(
-          { sub: user.id, email: user.email, role: user.role || 'user' },
-          process.env.JWT_SECRET,
-          { expiresIn: '1h' }
-        )
+   g. Generate refresh token (30-day, stored in user_auth_tokens):
+        generateRefreshToken(userId) → 64-char hex token
 
-   h. Clear failed attempts:
-        loginTracker.clearAttempts(email)
-        → deletes from memory + login_attempts table
-
-   i. Audit:
-        auditLogger.logSuccessfulAuth(user.id, email, 'password', ip)
+   h. Clear failed attempts + audit log
 
 3. RESPONSE:
-   → 200 { user: { id, email, full_name, ... }, access_token: "eyJ..." }
+   → 200 {
+        user: { id, email, full_name, ... },
+        access_token: "eyJ...",
+        refresh_token: "<64-char-hex>"
+      }
 ```
 
-### 3.3 Google OAuth Flow (GET /api/v1/auth/google → callback)
+### 3.3 Token Refresh (`POST /api/v1/auth/refresh`)
 
 ```
-Step A: INITIATION (googleAuth controller)
+Request Body: { "refresh_token": "<64-char-hex>" }
+
+1. Validate refresh token:
+     SELECT * FROM user_auth_tokens
+     WHERE token = $1 AND token_type = 'refresh_token'
+     AND used_at IS NULL AND expires_at > NOW()
+
+   → 401 if missing, expired, or already used
+
+2. Mark old token as used:
+     UPDATE user_auth_tokens SET used_at = NOW() WHERE id = $1
+     (refresh token rotation — old token cannot be reused)
+
+3. Issue new tokens:
+   a. New JWT with fresh jti (1h expiry)
+   b. New refresh token stored in DB (30-day)
+   c. Return both
+
+4. RESPONSE:
+   → 200 { user, access_token, refresh_token }
+```
+
+### 3.4 Logout (`POST /api/v1/auth/logout`)
+
+```
+Headers: Authorization: Bearer <access_token>
+
+1. Extract jti from req.user (attached by protect middleware)
+2. tokenBlacklist.add(jti, expiresAt):
+   a. Add jti to in-memory Set (O(1) lookup)
+   b. INSERT INTO user_auth_tokens (token_type='jwt_blacklist', expires_at)
+
+3. Audit: LOGOUT event
+
+4. RESPONSE:
+   → 200 { success: true, message: "Logged out successfully" }
+
+SUBSEQUENT REQUESTS with same token:
+   protect middleware decodes JWT → checks tokenBlacklist.isBlacklisted(jti)
+   → blacklisted → 401 "Token has been revoked"
+```
+
+### 3.5 Google OAuth Flow (GET /api/v1/auth/google → callback)
+
+```
+Step A: INITIATION
   1. Build origin from request (protocol + host)
   2. AuthService.getGoogleAuthUrl(origin, frontendUrl):
-     a. Generate CSRF token: crypto.randomBytes(16).toString('hex')
-     b. Encode state: base64(JSON.stringify({csrf, redirect: frontendUrl}))
-     c. Store CSRF: INSERT INTO user_auth_tokens (token_type='oauth_csrf', 10min expiry)
-     d. Build Google URL:
-        https://accounts.google.com/o/oauth2/v2/auth
-          ?client_id=...
-          &redirect_uri={origin}/api/v1/auth/google/callback
-          &response_type=code
-          &scope=email%20profile%20openid
-          &access_type=offline
-          &prompt=consent
-          &state={encoded_state}
-  3. Redirect user to Google consent screen (302)
+     a. Generate CSRF token, encode state as base64 JSON
+     b. Store CSRF: INSERT (token_type='oauth_csrf', 10min expiry)
+     c. Build Google URL with state parameter
+  3. Redirect to Google (302)
 
-Step B: CALLBACK (googleCallback controller)
-  1. Extract code + state from query params
-  2. Validate state CSRF:
-     a. Decode base64 → JSON.parse → extract csrf + redirect
-     b. Query user_auth_tokens for CSRF token (not expired, not used)
-     c. Mark token used (single-use)
-  3. Exchange Google code for tokens:
-     POST https://oauth2.googleapis.com/token
-       { code, client_id, client_secret, redirect_uri, grant_type: 'authorization_code' }
-     → { access_token, refresh_token, id_token, expires_in }
-  4. Get Google user info:
-     GET https://www.googleapis.com/oauth2/v2/userinfo
-       Authorization: Bearer {access_token}
-     → { email, id: googleId, name, picture }
-  5. Find or create user:
-     a. Check if email exists in users
-     b. If YES: update user_oauth connection + profile (if empty fields)
-     c. If NO: create user with password_hash='GOOGLE_OAUTH', email_verified=true
-               create user_oauth record, update profile, send welcome email
-  6. Generate service JWT:
-     jwt.sign({ sub: userId, email, role }, JWT_SECRET, { expiresIn: '1h' })
-  7. Set cookies (auth-token, refresh-token)
-  8. Generate one-time auth code:
-     AuthService.generateAuthCode(userId) → 64-char hex, 60s expiry
-  9. Redirect to frontend with code:
-     302 → {frontendUrl}/login?code={authCode}
+Step B: CALLBACK
+  1. Extract code + state from query
+  2. Validate state CSRF (decode → verify in DB → mark used)
+  3. Exchange code for Google tokens (POST to Google API)
+  4. Get user info from Google
+  5. Find or create user in users + user_oauth tables
+  6. Generate JWT with jti + refresh token (same as signin)
+  7. Set cookies + generate one-time auth code
+  8. Redirect to frontend with code
 ```
 
-### 3.4 OAuth 2.0 Provider Flow ("Continue with Starviel")
-
-This is the **third-party auth flow** — where an external app uses the Auth service as an identity provider.
+### 3.6 OAuth 2.0 Provider Flow ("Continue with Starviel")
 
 ```
 PHASE 1: APP REGISTRATION
-  Developer registers app via:
-    POST /api/v1/auth/developer/apps
-    { client_name, redirect_uris, scopes, is_confidential }
-  → Returns client_id (sauth_...) + client_secret (shown once)
-  → client_secret stored as bcrypt hash
+  POST /api/v1/auth/developer/apps → client_id + client_secret
 
 PHASE 2: AUTHORIZATION REQUEST
-  User clicks "Continue with Starviel" on third-party app:
-    GET {auth-service}/oauth/authorize
-      ?client_id=sauth_...
-      &redirect_uri=https://app.com/callback
-      &response_type=code
-      &scope=profile%20email
-      &state=random-csrf-token
-      &code_challenge=SHA256(verifier)     ← PKCE (optional)
-      &code_challenge_method=S256
+  GET /oauth/authorize?client_id=...&redirect_uri=...&response_type=code
+  → Validate client → render consent page
+  → User enters email/password + approves
 
-  Server:
-    1. Validate client_id is active
-    2. Validate redirect_uri is in client's registered list
-    3. Validate scopes against client's allowed scopes
-    4. Render consent page (server-side HTML):
-       - Client name + logo
-       - Scope descriptions (Profile, Email)
-       - Login form (email + password)
-       - Approve/Deny buttons
+PHASE 3: TOKEN EXCHANGE
+  POST /oauth/token { code, client_id, client_secret }
+  → Validate code (not expired, not used)
+  → Verify client_secret (bcrypt) or PKCE code_verifier
+  → Mark code as used
+  → Build JWT: { sub, iss: 's-auth', aud: clientId, scopes, email, name }
+  → Return: { access_token, token_type, expires_in, scope }
 
-PHASE 3: USER CONSENT
-  User enters email/password and clicks "Approve":
-    POST /oauth/authorize
-      { email, password, client_id, redirect_uri, scopes,
-        state, code_challenge, code_challenge_method, action: 'approve' }
-
-  Server:
-    1. If action='deny' → redirect with error=access_denied
-    2. Validate client again
-    3. AuthService.signIn(email, password) → authenticate user
-    4. Generate authorization code:
-       OAuthService.generateAuthorizationCode(userId, clientId, redirectUri,
-                                              scopes, codeChallenge, method, state)
-       → INSERT INTO oauth_authorization_codes
-          (code=64-char-hex, 60s expiry, single-use)
-    5. Audit: OAUTH_CODE_ISSUED
-    6. Redirect back to client:
-       302 → {redirect_uri}?code={authCode}&state={state}
-
-PHASE 4: TOKEN EXCHANGE
-  Third-party app's backend:
-    POST {auth-service}/oauth/token
-      { grant_type: 'authorization_code', code, client_id,
-        client_secret, redirect_uri }
-    (or with code_verifier instead of client_secret for PKCE)
-
-  Server (OAuthService.exchangeCode):
-    1. Find authorization code (not expired, not used)
-    2. Verify client_id matches
-    3. Verify credentials:
-       a. client_secret present → bcrypt.compare against stored hash
-       b. code_verifier present → SHA256(verifier) === code_challenge
-       c. neither → error
-    4. Mark code as used (one-time use)
-    5. Get user from users_complete view
-    6. Build JWT payload:
-       { sub: user.id, iss: 's-auth', aud: clientId,
-         scopes: [...scope names...],
-         email: (if email scope granted),
-         name: (if profile scope granted),
-         picture: (if profile scope granted) }
-    7. Sign JWT with JWT_SECRET (1h expiry)
-    8. Return:
-       { access_token: "eyJ...", token_type: "Bearer",
-         expires_in: 3600, scope: "profile email" }
-
-PHASE 5: USER INFO (for the third-party app)
-    GET {auth-service}/oauth/userinfo
-      Authorization: Bearer {access_token}
-
-    Server:
-    1. Verify Bearer token
-    2. jwt.verify(token, JWT_SECRET)
-    3. Check iss === 's-auth' (must be OAuth-issued token, not direct login)
-    4. Return based on scopes:
-       { sub: user-id }
-       + { email } if 'email' scope
-       + { name, picture } if 'profile' scope
+PHASE 4: USER INFO
+  GET /oauth/userinfo (Authorization: Bearer <token>)
+  → Verify iss === 's-auth'
+  → Return based on scopes: { sub, email?, name?, picture? }
 ```
 
 ---
 
-## 4. Security Architecture
-
-### 4.1 Password Hashing
-
-```
-Raw Password: "SecurePass123!"
-     │
-     ▼
-bcrypt.hash(password, 12)
-     │
-     ├─ Generates unique salt: $2b$12$Wn0Gc5Y0zX8Qf3M2p1Ht.O
-     │  (22 chars of base64 = 128 bits of salt)
-     ├─ Blowfish cipher: 2^12 = 4096 iterations
-     │  (cost factor 12 → ~250ms on modern CPU)
-     └─ Output: $2b$12$Wn0Gc5Y0zX8Qf3M2p1Ht.O3H7Gd9jK2m5L8qR4sT1vX6yZ0A3B4C5D
-```
-
-**Why bcrypt:**
-- SHA-256 is ASIC-friendly (billions of hashes/sec on GPU)
-- bcrypt uses expensive key setup phase (Blowfish) — resists GPU/ASIC
-- argon2 is stronger but requires careful parameter tuning
-- bcrypt is simpler, widely audited, ~250ms/hash acceptable for auth
-
-### 4.2 Account Lockout System
+## 4. Token Blacklist System
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│  LOGIN TRACKER STATE MACHINE                                          │
+│  TOKEN BLACKLIST (token.blacklist.js)                                 │
 ├──────────────────────────────────────────────────────────────────────┤
 │                                                                        │
-│  Normal State                    Locked State                          │
-│  ┌──────────────┐               ┌──────────────┐                     │
-│  │ count: 0      │  5 failures  │ count: 5      │                     │
-│  │ lockedUntil:  │─────────────►│ lockedUntil:  │                     │
-│  │ null          │  in 15 min   │ now + 15min   │                     │
-│  └──────┬───────┘               └──────┬───────┘                     │
-│         │                              │                              │
-│         │ successful login             │ 15 min passes                │
-│         │ clears counter               │ or 1 hour since last attempt │
-│         ▼                              ▼                              │
-│  ┌──────────────┐               ┌──────────────┐                     │
-│  │ count: 0      │              │ count: 0      │                     │
-│  │ lockedUntil:  │◄─────────────│ lockedUntil:  │                     │
-│  │ null          │   reset       │ null          │                     │
-│  └──────────────┘               └──────────────┘                     │
+│  On Server Startup:                                                    │
+│    SELECT token FROM user_auth_tokens                                  │
+│    WHERE token_type = 'jwt_blacklist' AND expires_at > NOW()          │
+│    → Loads all active blacklisted jti values into in-memory Set        │
 │                                                                        │
-│  Dual persistence:                                                     │
-│  • In-memory Map (fast reads, survives per-instance)                   │
-│  • login_attempts table (survives restarts, shared across instances)   │
+│  On Logout:                                                            │
+│    1. jti added to in-memory Set (immediate)                          │
+│    2. Persisted to DB (survives restart)                              │
+│                                                                        │
+│  On Every Protected Request (protect middleware):                      │
+│    1. JWT decoded → jti extracted                                      │
+│    2. Check: tokenBlacklist.isBlacklisted(jti)                        │
+│    3. If blacklisted → 401 "Token revoked"                            │
+│                                                                        │
+│  Memory: O(n) where n = active blacklisted tokens                    │
+│  Lookup: O(1)                                                         │
+│  Persistence: user_auth_tokens table with token_type='jwt_blacklist'  │
 └──────────────────────────────────────────────────────────────────────┘
-```
-
-### 4.3 CORS Dynamic Whitelist
-
-```
-Tier 1 (env var fallback):  CORS_WHITELIST env var
-Tier 2 (dynamic, DB):       Extracted from all active oauth_clients redirect_uris
-
-Merged at startup + on-demand via POST /admin/refresh-cors
-
-Origin extraction from redirect_uri:
-  "https://myapp.com/auth/callback"  →  "https://myapp.com"
-  "http://localhost:5173/callback"   →  "http://localhost:5173"
-
-Dev mode: all origins allowed (NODE_ENV=development)
-Prod mode: must match one of the merged origins
 ```
 
 ---
 
-## 5. JWT Token Structure
+## 5. Refresh Token Rotation
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  REFRESH TOKEN LIFECYCLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Issue:                    On signin or token refresh
+                            INSERT INTO user_auth_tokens
+                            (token_type='refresh_token', expires_at=NOW()+30d)
+
+  Use:                      POST /auth/refresh { refresh_token }
+                            → Mark old token used_at = NOW()
+                            → Issue new JWT + new refresh token
+                            (old refresh token cannot be reused)
+
+  Expiry:                   user_auth_tokens.expires_at (30 days)
+
+  Security benefit:
+    If a refresh token is stolen, the attacker uses it →
+    the legitimate user's next use of the old token fails
+    (it's been rotated) → signals token theft →
+    both tokens invalidated, user must re-authenticate
+```
+
+---
+
+## 6. Rate Limiting
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  RATE LIMITING (express-rate-limit)                                   │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                        │
+│  Endpoint:    POST /api/v1/auth/signup                                │
+│  Window:      15 minutes                                               │
+│  Max:         5 attempts per IP                                       │
+│  Response:    429 { error: "Too many signup attempts..." }            │
+│  Storage:     In-memory (default memory store)                        │
+│  Key:         req.ip || req.connection.remoteAddress                   │
+│                                                                        │
+│  Rationale:                                                            │
+│  • Prevents email flooding via automated signup bots                  │
+│  • Prevents abuse of Brevo email API (spending quota)                 │
+│  • 5/15min is generous enough for legitimate users                    │
+│  • IP-based key may block shared NAT users → intentional tradeoff    │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 7. Database Connection Resilience
+
+```
+STARTUP RETRY LOOP (server.js)
+
+  for i = 0; i < 5; i++:
+    try:
+      await db.query('SELECT NOW()')
+      await securityConfig.refreshCorsOrigins()
+      await tokenBlacklist.init()
+      app.listen(PORT)
+      return
+    catch error:
+      if i == 4: process.exit(1)
+      wait min(1000 * 2^i, 10000) ms
+      → 1s, 2s, 4s, 8s, 10s between retries
+
+  Why: In ephemeral environments (K8s, serverless),
+  the DB may not be immediately ready when the
+  app process starts. Retries avoid crash loops.
+```
+
+---
+
+## 8. Correlation ID
+
+```
+SERVER MIDDLEWARE (server.js)
+
+  app.use((req, res, next) => {
+    req.correlationId = req.headers['x-request-id']
+                      || crypto.randomUUID()
+    res.setHeader('X-Request-Id', req.correlationId)
+    next()
+  })
+
+  Error responses include:
+    { error: "...", correlationId: "uuid" }
+
+  Console logs include:
+    [<correlationId>] ERROR: ...
+
+  Why: Enables tracing a single request across
+  log lines, even under high concurrency.
+```
+
+---
+
+## 9. JWT Token Structure
 
 ### Direct Login JWT (from `auth.service.js` signIn)
 
@@ -476,6 +493,7 @@ PAYLOAD: {
   "sub": "550e8400-e29b-41d4-a716-446655440000",
   "email": "user@example.com",
   "role": "user",
+  "jti": "a1b2c3d4-...",               ← unique token ID for blacklist
   "iat": 1700000000,
   "exp": 1700003600
 }
@@ -486,7 +504,7 @@ PAYLOAD: {
 ```json
 PAYLOAD: {
   "sub": "550e8400-...",
-  "iss": "s-auth",
+  "iss": "starviel",
   "aud": "sauth_a3a6fc028c0ab7a200f4fedaac189eb9",
   "scopes": ["profile", "email"],
   "email": "user@example.com",
@@ -499,66 +517,79 @@ PAYLOAD: {
 
 ---
 
-## 6. Request Routing Summary
+## 10. Request Routing Summary
 
 ```
-Path                                Method  Auth   Handler
-───                                ──────  ────   ───────
-/api/v1/auth/signup                POST    None   authController.register
-/api/v1/auth/signin                POST    None   authController.login
-/api/v1/auth/verify-email          GET     None   authController.verifyEmail
-/api/v1/auth/resend-verification   POST    None   authController.resendVerification
-/api/v1/auth/google                GET     None   authController.googleAuth
-/api/v1/auth/google/callback       GET     None   authController.googleCallback
-/api/v1/auth/exchange-code         POST    None   authController.exchangeCode
-/api/v1/auth/complete-verification  POST    JWT    authController.completeVerification
-/api/v1/auth/profile               GET     JWT    authController.getProfile
-/api/v1/auth/profile               PUT     JWT    authController.updateProfile
-/api/v1/auth/delete-account        DELETE  JWT    authController.removeAccount
-/api/v1/auth/admin/users           GET     Admin  authController.getAllUsers
-/api/v1/auth/admin/refresh-cors    POST    Admin  authController.refreshCors
-/api/v1/auth/developer/apps        POST    JWT    authController.devRegisterApp
-/api/v1/auth/developer/apps        GET     JWT    authController.devListApps
-/api/v1/auth/developer/apps/:id    DELETE  JWT    authController.devDeleteApp
-/oauth/authorize                   GET     None   oauthController.authorize
-/oauth/authorize                   POST    None   oauthController.authorizeSubmit
-/oauth/token                       POST    None   oauthController.token
-/oauth/userinfo                    GET     Bearer oauthController.userinfo
+Path                                 Method  Auth      Handler
+───                                 ──────  ────      ───────
+/api/v1/auth/signup                 POST    Rate(5)   authController.register
+/api/v1/auth/signin                 POST    None      authController.login
+/api/v1/auth/refresh                POST    None      authController.refreshToken
+/api/v1/auth/logout                 POST    JWT       authController.logout
+/api/v1/auth/verify-email           GET     None      authController.verifyEmail
+/api/v1/auth/resend-verification    POST    None      authController.resendVerification
+/api/v1/auth/google                 GET     None      authController.googleAuth
+/api/v1/auth/google/callback        GET     None      authController.googleCallback
+/api/v1/auth/exchange-code          POST    None      authController.exchangeCode
+/api/v1/auth/complete-verification   POST    JWT       authController.completeVerification
+/api/v1/auth/profile                GET     JWT       authController.getProfile
+/api/v1/auth/profile                PUT     JWT       authController.updateProfile
+/api/v1/auth/delete-account         DELETE  JWT       authController.removeAccount
+/api/v1/auth/admin/users            GET     Admin     authController.getAllUsers
+/api/v1/auth/admin/refresh-cors     POST    Admin     authController.refreshCors
+/api/v1/auth/developer/apps         POST    JWT       authController.devRegisterApp
+/api/v1/auth/developer/apps         GET     JWT       authController.devListApps
+/api/v1/auth/developer/apps/:id     DELETE  JWT       authController.devDeleteApp
+/oauth/authorize                    GET     None      oauthController.authorize
+/oauth/authorize                    POST    None      oauthController.authorizeSubmit
+/oauth/token                        POST    None      oauthController.token
+/oauth/userinfo                     GET     Bearer    oauthController.userinfo
+
+New endpoints added:
+  POST /auth/refresh   → Exchange refresh token for new JWT + rotated refresh token
+  POST /auth/logout    → Blacklist current JWT's jti (requires valid JWT)
 ```
 
 ---
 
-## 7. Performance Characteristics
+## 11. Performance Characteristics
 
 | Operation | Typical Latency | DB Queries | External Calls |
 |-----------|----------------|------------|----------------|
 | signup | 300-500ms | 3 | 1 (Brevo email) |
-| signin | 200-400ms | 2-3 | 0 |
+| signin | 200-400ms | 3-4 | 0 |
+| refresh token | 100-200ms | 3 | 0 |
+| logout | 10-30ms | 1 | 0 |
 | Google OAuth init | 50ms | 1 | 0 |
-| Google OAuth callback | 600-1200ms | 4-6 | 2 (Google) |
+| Google OAuth callback | 600-1200ms | 5-7 | 2 (Google) |
 | OAuth authorize (GET) | 50ms | 1 | 0 |
 | OAuth authorize (POST) | 300-500ms | 4 | 0 |
 | OAuth token exchange | 100-200ms | 3-4 | 0 |
 | OAuth userinfo | 20ms | 0 (JWT decode only) | 0 |
 
-**JWT verify (protect middleware):** <1ms (pure CPU, no DB)
+**JWT verify (protect middleware):** <1ms (pure CPU, no DB) + ~0.01ms blacklist Set lookup
 
 ---
 
-## 8. Security Layers Summary
+## 12. Security Layers Summary
 
 | Layer | Mechanism | Protection |
 |-------|-----------|------------|
 | 1 | bcrypt (cost 12) | Password brute force |
 | 2 | Account lockout (5 attempts/15min) | Online brute force |
-| 3 | Email verification | Email ownership proof |
-| 4 | JWT HS256 + 1h expiry | Token forgery + replay |
-| 5 | OAuth authorization code (60s, single-use) | Authorization code interception |
-| 6 | PKCE (SHA256 code_verifier) | Authorization code interception (public clients) |
-| 7 | CSRF state parameter (10min) | OAuth CSRF attack |
-| 8 | Open redirect validation | URL-based attacks |
-| 9 | CORS whitelist | Cross-origin API access |
-| 10 | Helmet security headers | XSS, clickjacking, MIME sniffing |
-| 11 | httpOnly + secure + sameSite cookies | XSS + CSRF |
-| 12 | Audit logging | Security incident reconstruction |
-| 13 | Input validation (express-validator) | SQL injection, XSS |
+| 3 | Rate limiting (5 signups/15min/IP) | Signup abuse, email flooding |
+| 4 | Email verification | Email ownership proof |
+| 5 | JWT HS256 + 1h expiry + `jti` | Token forgery, replay, revocation |
+| 6 | Refresh token rotation (30-day) | Token theft detection |
+| 7 | JWT blacklist (in-memory + DB) | Immediate token revocation on logout |
+| 8 | OAuth authorization code (60s, single-use) | Authorization code interception |
+| 9 | PKCE (SHA256 code_verifier) | Code interception (public clients) |
+| 10 | CSRF state parameter (10min) | OAuth CSRF attack |
+| 11 | Open redirect validation | URL-based attacks |
+| 12 | Dynamic CORS origins (env + DB) | Cross-origin API access |
+| 13 | Helmet security headers | XSS, clickjacking, MIME sniffing |
+| 14 | httpOnly + secure + sameSite cookies | XSS + CSRF |
+| 15 | Audit logging (console + DB) | Security incident reconstruction |
+| 16 | Input validation (express-validator) | SQL injection, XSS |
+| 17 | Correlation ID (X-Request-Id) | Request tracing across logs |
+| 18 | Password strength on reset | Weak password prevention |
