@@ -1,9 +1,5 @@
-/**
- * Auth Middleware - v1.0.2
- * JWT token verification for protected routes
- */
-
 const jwt = require('jsonwebtoken');
+const tokenBlacklist = require('../utils/token.blacklist');
 
 const protect = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -33,7 +29,15 @@ const protect = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // Contains sub (id), email, role
+    
+    if (decoded.jti && tokenBlacklist.isBlacklisted(decoded.jti)) {
+      return res.status(401).json({
+        error: 'Token has been revoked. Please sign in again.',
+        code: 'TOKEN_REVOKED'
+      });
+    }
+    
+    req.user = decoded;
     next();
   } catch (error) {
     console.error('Token verification error:', error.message);

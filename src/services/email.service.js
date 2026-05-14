@@ -86,7 +86,7 @@ class EmailService {
   async sendWelcomeEmail(toEmail, userName) {
     const sendSmtpEmail = new brevo.SendSmtpEmail();
 
-    sendSmtpEmail.subject = "Welcome to S-Auth! 🚀";
+    sendSmtpEmail.subject = "Welcome to Starviel! 🚀";
     const displayName = userName || toEmail.split('@')[0];
 
     sendSmtpEmail.htmlContent = `
@@ -95,7 +95,7 @@ class EmailService {
           <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
             <h1 style="color: #34A853;">Welcome aboard, ${displayName}! 🎉</h1>
             <p>Your email has been verified successfully!</p>
-            <p>Thank you for joining S-Auth. Your account is now fully active and ready to use.</p>
+            <p>Thank you for joining Starviel. Your account is now fully active and ready to use.</p>
             <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
               <h3 style="margin-top: 0; color: #4285F4;">What's Next?</h3>
               <ul style="padding-left: 20px;">
@@ -113,7 +113,7 @@ class EmailService {
             </p>
             <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;" />
             <p style="color: #666; font-size: 12px; text-align: center;">
-              © 2026 S-Auth. All rights reserved.
+              © 2026 Starviel. All rights reserved.
             </p>
           </div>
         </body>
@@ -190,7 +190,7 @@ class EmailService {
           <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
             <h1 style="color: #EF4444;">Account Deletion Confirmation</h1>
             <p>Hi ${displayName},</p>
-            <p>This email confirms that your S-Auth account associated with <strong>${toEmail}</strong> has been successfully deleted.</p>
+            <p>This email confirms that your Starviel account associated with <strong>${toEmail}</strong> has been successfully deleted.</p>
             
             <div style="background-color: #fef2f2; border-left: 4px solid #EF4444; padding: 15px; margin: 20px 0; border-radius: 5px;">
               <p style="margin: 0; color: #7F1D1D;">
@@ -214,7 +214,7 @@ class EmailService {
             
             <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;" />
             <p style="color: #666; font-size: 12px; text-align: center;">
-              © 2026 S-Auth. All rights reserved.
+              © 2026 Starviel. All rights reserved.
             </p>
           </div>
         </body>

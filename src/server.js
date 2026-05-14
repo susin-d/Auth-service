@@ -1,21 +1,25 @@
-/**
- * S-Auth Server - v1.0.1
- * Express server with comprehensive security features
- */
-
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
+const crypto = require('crypto');
 
 const db = require('./config/db');
 const authRoutes = require('./routes/auth.routes');
 const oauthRoutes = require('./routes/oauth.routes');
 const securityConfig = require('./config/security.config');
+const tokenBlacklist = require('./utils/token.blacklist');
 
 const app = express();
+
+// 0. CORRELATION ID
+app.use((req, res, next) => {
+  req.correlationId = req.headers['x-request-id'] || crypto.randomUUID();
+  res.setHeader('X-Request-Id', req.correlationId);
+  next();
+});
 
 // 1. GLOBAL MIDDLEWARE
 app.use(helmet({
@@ -32,67 +36,53 @@ app.use(helmet({
     includeSubDomains: true,
     preload: true
   }
-})); // Security headers
+}));
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Always allow for development - no CORS restrictions
     if (securityConfig.isDevelopment) {
       return callback(null, true);
     }
 
-    // Production: Allow requests with no origin (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
     
-    // Check against whitelist
-    if (securityConfig.corsWhitelist && securityConfig.corsWhitelist.includes(origin)) {
+    if (securityConfig.allowedCorsOrigins && securityConfig.allowedCorsOrigins.includes(origin)) {
       return callback(null, true);
     }
     
-    // Reject other origins
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-})); // Enable CORS with whitelist
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id']
+}));
 
-app.use(morgan('dev')); // Request logging
-app.use(express.json({ limit: '1mb' })); // Body parser with size limit
-app.use(express.urlencoded({ extended: true })); // For OAuth consent form
-app.use(cookieParser()); // Cookie parser
-app.use(express.static('public')); // Serve static files from public/
+app.use(morgan('dev'));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+app.use(express.static('public'));
 
-// Trust proxy for secure cookies behind reverse proxy
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
 
-// 2. DATABASE INITIALIZATION / CONNECTION CHECK
+// 2. DATABASE INITIALIZATION
 const initDB = async () => {
-  try {
-    // Simple query to verify connection
-    await db.query('SELECT NOW()');
-    console.log('✅ Database Connection: Verified (Neon PostgreSQL)');
-    // Load CORS origins from registered OAuth clients
-    await securityConfig.refreshCorsOrigins();
-  } catch (err) {
-    console.error('❌ Database Connection Error:', err.message);
-    process.exit(1);
-  }
+  const result = await db.query('SELECT NOW()');
+  console.log('✅ Database Connection: Verified (Neon PostgreSQL)');
+  await securityConfig.refreshCorsOrigins();
+  await tokenBlacklist.init();
 };
 
 // 3. ROUTES
 app.use('/api/v1/auth', authRoutes);
 app.use('/oauth', oauthRoutes);
 
-// Developer Console SPA routing
 app.get(/^\/console/, (req, res) => {
   res.sendFile(require('path').join(__dirname, '../public/console/index.html'));
 });
 
-
-// Health Check Endpoint (Essential for Microservices/Load Balancers)
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'UP', service: 'auth-service' });
 });
@@ -112,12 +102,15 @@ app.use((req, res) => {
 
 // 5. GLOBAL ERROR HANDLER
 app.use((err, req, res, next) => {
-  console.error('[ERROR]', err);
+  const cid = req.correlationId || 'unknown';
+  console.error(`[${cid}] ERROR:`, err);
   
-  // Don't expose stack traces in production
   const isDev = process.env.NODE_ENV === 'development';
   
-  // Sanitize error messages
+  if (err.name === 'RateLimitError') {
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+  
   let message = 'An unexpected error occurred. Please try again.';
   let status = 500;
   
@@ -140,6 +133,7 @@ app.use((err, req, res, next) => {
   res.status(status).json({
     error: message,
     code: err.code || 'INTERNAL_ERROR',
+    correlationId: cid,
     ...(isDev && { 
       details: err.message,
       stack: err.stack 
@@ -150,11 +144,25 @@ app.use((err, req, res, next) => {
 // 6. START SERVER
 const PORT = process.env.PORT || 3000;
 
-const startServer = async () => {
-  await initDB();
-  app.listen(PORT, () => {
-    console.log(`🚀 Auth Microservice running on port ${PORT}`);
-  });
+const startServer = async (retries = 5) => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await initDB();
+      app.listen(PORT, () => {
+        console.log(`🚀 Auth Microservice running on port ${PORT}`);
+      });
+      return;
+    } catch (err) {
+      console.error(`❌ Database Connection Error (attempt ${i + 1}/${retries}):`, err.message);
+      if (i === retries - 1) {
+        console.error('❌ Max retries reached. Exiting.');
+        process.exit(1);
+      }
+      const delay = Math.min(1000 * Math.pow(2, i), 10000);
+      console.log(`   Retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
 };
 
 startServer();

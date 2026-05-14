@@ -1,9 +1,3 @@
-/**
- * Auth Service - v3.0.0
- * Relational database authentication
- * Uses separate tables for users, profiles, tokens, and OAuth
- */
-
 const db = require('../config/db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
@@ -14,28 +8,36 @@ const securityConfig = require('../config/security.config');
 const auditLogger = require('../utils/audit.logger');
 
 const SALT_ROUNDS = 12;
-const VERIFICATION_TOKEN_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
-const RESET_TOKEN_EXPIRY = 60 * 60 * 1000; // 1 hour
+const VERIFICATION_TOKEN_EXPIRY = 24 * 60 * 60 * 1000;
+const RESET_TOKEN_EXPIRY = 60 * 60 * 1000;
+const REFRESH_TOKEN_EXPIRY = 30 * 24 * 60 * 60 * 1000;
 
 const generateToken = () => crypto.randomBytes(32).toString('hex');
+
+const isStrongPassword = (password) => {
+  if (!password || password.length < 8) return false;
+  if (!/[A-Z]/.test(password)) return false;
+  if (!/[a-z]/.test(password)) return false;
+  if (!/[0-9]/.test(password)) return false;
+  return true;
+};
 
 const validateHttpsUrl = (frontendUrl) => {
   if (!frontendUrl) return null;
   try {
     const parsedUrl = new URL(frontendUrl);
-    // Allow http for localhost/127.0.0.1 in development, require https otherwise
-    const isLocalhost = parsedUrl.hostname === 'localhost' || 
-                       parsedUrl.hostname === '127.0.0.1' || 
-                       parsedUrl.hostname.endsWith('.localhost');
-    
+    const isLocalhost = parsedUrl.hostname === 'localhost' ||
+                        parsedUrl.hostname === '127.0.0.1' ||
+                        parsedUrl.hostname.endsWith('.localhost');
+
     if (parsedUrl.protocol === 'http:' && !isLocalhost) {
       throw new Error('frontendUrl must be a valid https:// URL (http only allowed for localhost)');
     }
-    
+
     if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
       throw new Error('frontendUrl must be a valid http:// or https:// URL');
     }
-    
+
     return frontendUrl.replace(/\/+$/, '');
   } catch (error) {
     throw new Error(error.message || 'frontendUrl must be a valid https:// URL');
@@ -44,7 +46,6 @@ const validateHttpsUrl = (frontendUrl) => {
 
 class AuthService {
   async signUp(email, password, frontendUrl) {
-    // 1. Check if email exists
     const existingResult = await db.query(
       'SELECT id FROM users WHERE email = $1 LIMIT 1',
       [email]
@@ -57,10 +58,8 @@ class AuthService {
       throw error;
     }
 
-    // 2. Hash password
     const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    // 3. Create user (triggers auto-profile creation)
     const userResult = await db.query(
       'INSERT INTO users (email, password_hash, email_verified, account_status) VALUES ($1, $2, $3, $4) RETURNING *',
       [email, password_hash, false, 'active']
@@ -68,7 +67,6 @@ class AuthService {
 
     const newUser = userResult.rows[0];
 
-    // 4. Generate and store verification token
     const token = generateToken();
     const expires_at = new Date(Date.now() + VERIFICATION_TOKEN_EXPIRY);
 
@@ -77,10 +75,9 @@ class AuthService {
       [newUser.id, 'email_verification', token, expires_at]
     );
 
-    // 5. Send verification email
     const backendUrl = process.env.BACKEND_URL || 'http://localhost:3000';
     const verificationLink = `${backendUrl}/api/v1/auth/verify-email?token=${token}`;
-    
+
     EmailService
       .sendVerificationEmail(email, verificationLink)
       .catch(err => console.error('Email failed', err));
@@ -93,7 +90,6 @@ class AuthService {
   }
 
   async signIn(email, password) {
-    // 1. Get user with profile
     const userResult = await db.query(
       'SELECT * FROM users_complete WHERE email = $1 AND account_status = $2 LIMIT 1',
       [email, 'active']
@@ -105,53 +101,101 @@ class AuthService {
       throw new Error('Invalid email or password');
     }
 
-    // 2. Get password hash from users table
     const authResult = await db.query(
       'SELECT password_hash FROM users WHERE id = $1 LIMIT 1',
       [user.id]
     );
     const authData = authResult.rows[0];
 
-    // 3. Detect Google OAuth-only accounts (no password set)
     if (authData.password_hash === 'GOOGLE_OAUTH') {
       throw new Error('This account uses Google Sign-In. Please sign in with Google instead.');
     }
 
-    // 4. Check email verification
     if (!user.email_verified) {
       throw new Error('Please verify your email before signing in. Check your inbox for the verification link.');
     }
 
-    // 5. Verify password
     const isPasswordValid = await bcrypt.compare(password, authData.password_hash);
     if (!isPasswordValid) {
       throw new Error('Invalid email or password');
     }
 
-    // 6. Update last signin
     await db.query(
       'UPDATE users SET last_signin_at = $1 WHERE id = $2',
       [new Date().toISOString(), user.id]
     );
 
-    // 7. Generate JWT
+    const jti = crypto.randomUUID();
     const token = jwt.sign(
-      { sub: user.id, email: user.email, role: user.role || 'user' },
+      { sub: user.id, email: user.email, role: user.role || 'user', jti },
       process.env.JWT_SECRET,
       { expiresIn: securityConfig.jwt.accessTokenExpiry }
     );
 
+    const refreshToken = await this.generateRefreshToken(user.id);
+
     await auditLogger.logSuccessfulAuth(user.id, email, 'email', null);
 
-    // 8. Return user data (view already excludes password_hash)
     return {
       user,
-      access_token: token
+      access_token: token,
+      refresh_token: refreshToken
+    };
+  }
+
+  async generateRefreshToken(userId) {
+    const token = generateToken();
+    const expires_at = new Date(Date.now() + REFRESH_TOKEN_EXPIRY);
+    await db.query(
+      'INSERT INTO user_auth_tokens (user_id, token_type, token, expires_at) VALUES ($1, $2, $3, $4)',
+      [userId, 'refresh_token', token, expires_at]
+    );
+    return token;
+  }
+
+  async exchangeRefreshToken(refreshToken) {
+    const tokenResult = await db.query(
+      'SELECT * FROM user_auth_tokens WHERE token = $1 AND token_type = $2 AND used_at IS NULL AND expires_at > NOW() LIMIT 1',
+      [refreshToken, 'refresh_token']
+    );
+
+    const tokenData = tokenResult.rows[0];
+    if (!tokenData) {
+      throw new Error('Invalid or expired refresh token');
+    }
+
+    await db.query(
+      'UPDATE user_auth_tokens SET used_at = $1 WHERE id = $2',
+      [new Date().toISOString(), tokenData.id]
+    );
+
+    const userResult = await db.query(
+      'SELECT * FROM users_complete WHERE id = $1 LIMIT 1',
+      [tokenData.user_id]
+    );
+
+    const user = userResult.rows[0];
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const jti = crypto.randomUUID();
+    const accessToken = jwt.sign(
+      { sub: user.id, email: user.email, role: user.role || 'user', jti },
+      process.env.JWT_SECRET,
+      { expiresIn: securityConfig.jwt.accessTokenExpiry }
+    );
+
+    const newRefreshToken = await this.generateRefreshToken(user.id);
+
+    return {
+      user,
+      access_token: accessToken,
+      refresh_token: newRefreshToken
     };
   }
 
   async verifyEmailFromToken(token, type) {
-    // 1. Find valid unused token
     const tokenResult = await db.query(
       'SELECT * FROM user_auth_tokens WHERE token = $1 AND token_type = $2 AND used_at IS NULL LIMIT 1',
       [token, 'email_verification']
@@ -163,38 +207,32 @@ class AuthService {
       throw new Error('Invalid or expired verification token');
     }
 
-    // 2. Check expiry
     if (new Date() > new Date(tokenData.expires_at)) {
       throw new Error('Verification token has expired. Please request a new one.');
     }
 
-    // 3. Get user info
     const userResult = await db.query(
       'SELECT id, email FROM users WHERE id = $1 LIMIT 1',
       [tokenData.user_id]
     );
     const userData = userResult.rows[0];
 
-    // 4. Mark token as used
     await db.query(
       'UPDATE user_auth_tokens SET used_at = $1 WHERE id = $2',
       [new Date().toISOString(), tokenData.id]
     );
 
-    // 5. Update user email_verified
     await db.query(
       'UPDATE users SET email_verified = $1, email_verified_at = $2 WHERE id = $3',
       [true, new Date().toISOString(), tokenData.user_id]
     );
 
-    // 6. Get complete user data
     const completeUserResult = await db.query(
       'SELECT * FROM users_complete WHERE id = $1 LIMIT 1',
       [tokenData.user_id]
     );
     const user = completeUserResult.rows[0];
 
-    // 7. Send welcome email
     EmailService
       .sendWelcomeEmail(userData.email, user.full_name)
       .catch(err => console.error('Welcome email failed', err));
@@ -212,7 +250,6 @@ class AuthService {
   }
 
   async resendVerificationEmail(email, frontendUrl) {
-    // 1. Check if user exists
     const userResult = await db.query(
       'SELECT id, email, email_verified FROM users WHERE email = $1 LIMIT 1',
       [email]
@@ -224,18 +261,15 @@ class AuthService {
       throw new Error('User with this email not found. Please sign up first.');
     }
 
-    // 2. Check if already verified
     if (user.email_verified) {
       throw new Error('Email is already verified. You can sign in now.');
     }
 
-    // 3. Delete old verification tokens
     await db.query(
-      'DELETE FROM user_auth_tokens WHERE user_id = $1 AND token_type = $2 AND used_at IS NULL',
+      "DELETE FROM user_auth_tokens WHERE user_id = $1 AND token_type = $2 AND used_at IS NULL",
       [user.id, 'email_verification']
     );
 
-    // 4. Generate new verification token
     const token = generateToken();
     const expires_at = new Date(Date.now() + VERIFICATION_TOKEN_EXPIRY);
 
@@ -244,10 +278,9 @@ class AuthService {
       [user.id, 'email_verification', token, expires_at]
     );
 
-    // 5. Send verification email
     const backendUrl = process.env.BACKEND_URL || 'http://localhost:3000';
     const verificationLink = `${backendUrl}/api/v1/auth/verify-email?token=${token}`;
-    
+
     EmailService
       .sendVerificationEmail(email, verificationLink)
       .catch(err => console.error('Resend verification email failed', err));
@@ -259,7 +292,6 @@ class AuthService {
   }
 
   async deleteAccount(userId) {
-    // Soft delete
     await db.query(
       'UPDATE users SET account_status = $1, deleted_at = $2 WHERE id = $3',
       ['deleted', new Date().toISOString(), userId]
@@ -270,21 +302,19 @@ class AuthService {
 
   async getGoogleAuthUrl(origin, frontendUrl) {
     const callbackUrl = new URL('/api/v1/auth/google/callback', origin);
-    
-    // Generate CSRF token and encode with frontend_url in state parameter
+
     const csrfToken = crypto.randomBytes(16).toString('hex');
     const statePayload = JSON.stringify({
       csrf: csrfToken,
       redirect: frontendUrl || ''
     });
     const state = Buffer.from(statePayload).toString('base64');
-    
-    // Store CSRF token for validation on callback (short-lived, 10 min)
+
     await db.query(
       'INSERT INTO user_auth_tokens (user_id, token_type, token, expires_at) VALUES ($1, $2, $3, $4)',
       ['00000000-0000-0000-0000-000000000000', 'oauth_csrf', csrfToken, new Date(Date.now() + 10 * 60 * 1000)]
     );
-    
+
     const googleAuthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     googleAuthUrl.searchParams.set('client_id', process.env.GOOGLE_CLIENT_ID);
     googleAuthUrl.searchParams.set('redirect_uri', callbackUrl.toString());
@@ -297,7 +327,6 @@ class AuthService {
   }
 
   async exchangeGoogleCode(code, origin) {
-    // 1. Exchange code for tokens
     const tokenUrl = 'https://oauth2.googleapis.com/token';
     const callbackUrl = new URL('/api/v1/auth/google/callback', origin);
 
@@ -312,14 +341,12 @@ class AuthService {
     const { access_token, refresh_token, id_token, expires_in } = tokenResponse.data;
     const token_expires_at = expires_in ? new Date(Date.now() + expires_in * 1000).toISOString() : null;
 
-    // 2. Get user info from Google
     const userInfoResponse = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: { Authorization: `Bearer ${access_token}` }
     });
 
     const { email, id: googleId, name, picture } = userInfoResponse.data;
 
-    // 3. Check if user exists
     const existingResult = await db.query(
       'SELECT id, email, email_verified FROM users WHERE email = $1 LIMIT 1',
       [email]
@@ -329,15 +356,13 @@ class AuthService {
     let userId;
 
     if (existingUser) {
-      // Update existing user
       userId = existingUser.id;
-      
+
       await db.query(
         'UPDATE users SET last_signin_at = $1 WHERE id = $2',
         [new Date().toISOString(), userId]
       );
 
-      // Check/update OAuth connection
       const oauthResult = await db.query(
         'SELECT id FROM user_oauth WHERE user_id = $1 AND provider = $2 LIMIT 1',
         [userId, 'google']
@@ -365,14 +390,12 @@ class AuthService {
         );
       }
 
-      // Update profile with Google data if empty
       await db.query(
         'UPDATE user_profiles SET full_name = $1, avatar_url = $2 WHERE user_id = $3 AND full_name IS NULL',
         [name, picture, userId]
       );
 
     } else {
-      // Create new user
       try {
         const createResult = await db.query(
           `INSERT INTO users (email, password_hash, email_verified, email_verified_at, account_status, last_signin_at)
@@ -383,20 +406,17 @@ class AuthService {
         const newUser = createResult.rows[0];
         userId = newUser.id;
 
-        // Create OAuth connection
         await db.query(
           `INSERT INTO user_oauth (user_id, provider, provider_user_id, provider_email, provider_avatar_url, provider_name, access_token, refresh_token, token_expires_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [userId, 'google', googleId, email, picture, name, access_token, refresh_token, token_expires_at]
         );
 
-        // Update profile with Google data
         await db.query(
           'UPDATE user_profiles SET full_name = $1, avatar_url = $2 WHERE user_id = $3',
           [name, picture, userId]
         );
 
-        // Send welcome email
         EmailService
           .sendWelcomeEmail(email, name)
           .catch(err => console.error('Welcome email failed', err));
@@ -409,33 +429,31 @@ class AuthService {
       }
     }
 
-    // 4. Get complete user data
     const completeResult = await db.query(
       'SELECT * FROM users_complete WHERE id = $1 LIMIT 1',
       [userId]
     );
     const user = completeResult.rows[0];
 
-    // 5. Generate JWT
+    const jti = crypto.randomUUID();
     const serviceToken = jwt.sign(
-      { sub: userId, email, role: user.role || 'user' },
+      { sub: userId, email, role: user.role || 'user', jti },
       process.env.JWT_SECRET,
       { expiresIn: securityConfig.jwt.accessTokenExpiry }
     );
+
+    const appRefreshToken = await this.generateRefreshToken(userId);
 
     await auditLogger.logSuccessfulAuth(userId, email, 'google', null);
 
     return {
       access_token: serviceToken,
-      refresh_token,
+      refresh_token: appRefreshToken,
       google_access_token: access_token,
       user
     };
   }
 
-  /**
-   * Validate OAuth state parameter CSRF token
-   */
   async validateOAuthState(state) {
     if (!state) {
       throw new Error('Missing OAuth state parameter');
@@ -454,9 +472,8 @@ class AuthService {
       throw new Error('Missing CSRF token in OAuth state');
     }
 
-    // Verify CSRF token exists and is not expired
     const tokenResult = await db.query(
-      'SELECT id FROM user_auth_tokens WHERE token = $1 AND token_type = $2 AND used_at IS NULL AND expires_at > NOW() LIMIT 1',
+      "SELECT id FROM user_auth_tokens WHERE token = $1 AND token_type = $2 AND used_at IS NULL AND expires_at > NOW() LIMIT 1",
       [csrf, 'oauth_csrf']
     );
 
@@ -464,7 +481,6 @@ class AuthService {
       throw new Error('Invalid or expired CSRF token');
     }
 
-    // Mark CSRF token as used (one-time use)
     await db.query(
       'UPDATE user_auth_tokens SET used_at = $1 WHERE id = $2',
       [new Date().toISOString(), tokenResult.rows[0].id]
@@ -473,12 +489,9 @@ class AuthService {
     return redirect || null;
   }
 
-  /**
-   * Generate a one-time auth code for the frontend to exchange for tokens
-   */
   async generateAuthCode(userId, sessionData) {
     const code = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 60 * 1000); // 60 seconds
+    const expiresAt = new Date(Date.now() + 60 * 1000);
 
     await db.query(
       'INSERT INTO user_auth_tokens (user_id, token_type, token, expires_at) VALUES ($1, $2, $3, $4)',
@@ -488,9 +501,6 @@ class AuthService {
     return code;
   }
 
-  /**
-   * Exchange a one-time auth code for session tokens
-   */
   async exchangeAuthCode(code) {
     const tokenResult = await db.query(
       'SELECT * FROM user_auth_tokens WHERE token = $1 AND token_type = $2 AND used_at IS NULL LIMIT 1',
@@ -506,13 +516,11 @@ class AuthService {
       throw new Error('Authorization code has expired');
     }
 
-    // Mark as used
     await db.query(
       'UPDATE user_auth_tokens SET used_at = $1 WHERE id = $2',
       [new Date().toISOString(), tokenData.id]
     );
 
-    // Get user and generate JWT
     const userResult = await db.query(
       'SELECT * FROM users_complete WHERE id = $1 LIMIT 1',
       [tokenData.user_id]
@@ -523,8 +531,9 @@ class AuthService {
       throw new Error('User not found');
     }
 
+    const jti = crypto.randomUUID();
     const accessToken = jwt.sign(
-      { sub: user.id, email: user.email, role: user.role || 'user' },
+      { sub: user.id, email: user.email, role: user.role || 'user', jti },
       process.env.JWT_SECRET,
       { expiresIn: securityConfig.jwt.accessTokenExpiry }
     );
@@ -533,31 +542,28 @@ class AuthService {
   }
 
   buildFrontendRedirect(frontendUrlParam) {
-    // Use provided frontend_url or fallback to environment variable
     const frontendUrl = frontendUrlParam || process.env.FRONTEND_URL;
-    
+
     if (!frontendUrl) {
       throw new Error('FRONTEND_URL environment variable is required');
     }
-    
-    // Validate the URL
+
     const validated = validateHttpsUrl(frontendUrl);
     if (!validated) {
       throw new Error('Invalid frontend URL format or protocol');
     }
-    
-    // Validate against CORS whitelist to prevent open redirects
+
     const normalizedUrl = frontendUrl.replace(/\/+$/, '');
     const isLocalhost = normalizedUrl.includes('localhost') || normalizedUrl.includes('127.0.0.1');
-    
+
     if (securityConfig.isDevelopment && isLocalhost) {
       return normalizedUrl;
     }
-    
-    if (securityConfig.corsWhitelist.length > 0 && !securityConfig.corsWhitelist.includes(normalizedUrl)) {
+
+    if (securityConfig.allowedCorsOrigins.length > 0 && !securityConfig.allowedCorsOrigins.includes(normalizedUrl)) {
       throw new Error('Redirect URL is not in the allowed whitelist');
     }
-    
+
     return normalizedUrl;
   }
 
@@ -582,14 +588,12 @@ class AuthService {
       'country', 'city', 'website_url'
     ];
 
-    const sanitizedUpdates = {};
     const setClauses = [];
     const values = [];
     let paramCount = 1;
 
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
-        sanitizedUpdates[field] = updates[field];
         setClauses.push(`${field} = $${paramCount}`);
         values.push(updates[field]);
         paramCount++;
@@ -605,12 +609,10 @@ class AuthService {
 
     await db.query(query, values);
 
-    // Return updated complete profile
     return this.getProfile(userId);
   }
 
   async completeVerification(userId) {
-    // Check user's current verification status
     const userResult = await db.query(
       'SELECT id, email, email_verified FROM users WHERE id = $1 LIMIT 1',
       [userId]
@@ -625,7 +627,6 @@ class AuthService {
       throw new Error('Email is not yet verified. Please click the verification link in your email first.');
     }
 
-    // Get complete profile
     const profileResult = await db.query(
       'SELECT * FROM users_complete WHERE id = $1 LIMIT 1',
       [userId]
@@ -643,10 +644,9 @@ class AuthService {
     const user = result.rows[0];
 
     if (!user) {
-      return { success: true }; // Don't reveal if email exists
+      return { success: true };
     }
 
-    // Generate token
     const token = generateToken();
     const expires_at = new Date(Date.now() + RESET_TOKEN_EXPIRY);
 
@@ -658,14 +658,18 @@ class AuthService {
     const backendUrl = process.env.BACKEND_URL || 'http://localhost:3000';
     const resetLink = `${backendUrl}/api/v1/auth/reset-password?token=${token}`;
 
-    // TODO: Implement EmailService.sendPasswordResetEmail()
-    console.log(`Password reset link: ${resetLink}`);
+    EmailService
+      .sendPasswordResetEmail(user.email, resetLink)
+      .catch(err => console.error('Password reset email failed', err));
 
     return { success: true };
   }
 
   async resetPassword(token, newPassword) {
-    // Find valid unused token
+    if (!isStrongPassword(newPassword)) {
+      throw new Error('Password must be at least 8 characters with uppercase, lowercase, and a number');
+    }
+
     const tokenResult = await db.query(
       'SELECT * FROM user_auth_tokens WHERE token = $1 AND token_type = $2 AND used_at IS NULL LIMIT 1',
       [token, 'password_reset']
@@ -680,16 +684,13 @@ class AuthService {
       throw new Error('Reset token has expired. Please request a new one.');
     }
 
-    // Hash new password
     const password_hash = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
-    // Update password
     await db.query(
       'UPDATE users SET password_hash = $1 WHERE id = $2',
       [password_hash, tokenData.user_id]
     );
 
-    // Mark token as used
     await db.query(
       'UPDATE user_auth_tokens SET used_at = $1 WHERE id = $2',
       [new Date().toISOString(), tokenData.id]

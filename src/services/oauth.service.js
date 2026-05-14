@@ -1,6 +1,6 @@
 /**
  * OAuth Provider Service - v1.0.0
- * Handles OAuth2 Authorization Server logic for "Sign in with S-Auth"
+ * Handles OAuth2 Authorization Server logic for "Sign in with Starviel"
  */
 
 const db = require('../config/db');

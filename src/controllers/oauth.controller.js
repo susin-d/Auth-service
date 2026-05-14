@@ -192,7 +192,7 @@ exports.userinfo = async (req, res) => {
     if (decoded.iss !== 's-auth') {
       return res.status(401).json({
         error: 'invalid_token',
-        error_description: 'Token was not issued by S-Auth OAuth provider'
+        error_description: 'Token was not issued by Starviel OAuth provider'
       });
     }
 
@@ -243,7 +243,7 @@ function buildConsentPage({ clientName, clientDescription, logoUrl, scopes, clie
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sign in — S-Auth</title>
+  <title>Sign in — Starviel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -320,7 +320,7 @@ function buildConsentPage({ clientName, clientDescription, logoUrl, scopes, clie
 
   <div class="card">
     <div class="header">
-      <h1>Sign in with S-Auth</h1>
+      <h1>Sign in with Starviel</h1>
       <p>Authorize access to your account</p>
     </div>
 
@@ -361,7 +361,7 @@ function buildConsentPage({ clientName, clientDescription, logoUrl, scopes, clie
     </form>
 
     <div class="footer">
-      Powered by <a href="#">S-Auth</a> • Starviel Authentication
+      Powered by <a href="#">Starviel</a> • Starviel Authentication
     </div>
   </div>
 </body>

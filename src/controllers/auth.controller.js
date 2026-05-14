@@ -9,7 +9,7 @@ const EmailService = require('../services/email.service');
 const loginTracker = require('../utils/login.tracker');
 const auditLogger = require('../utils/audit.logger');
 const securityConfig = require('../config/security.config');
-const securityConfig = require('../config/security.config');
+const tokenBlacklist = require('../utils/token.blacklist');
 const db = require('../config/db');
 
 exports.register = async (req, res) => {
@@ -544,7 +544,7 @@ exports.verifyEmail = async (req, res) => {
           <button class="close-btn" onclick="window.close()">Close Window</button>
           
           <div class="footer">
-            © 2026 S-Auth • Secure Authentication Service
+            © 2026 Starviel • Secure Authentication Service
           </div>
         </div>
       </body>
@@ -719,7 +719,7 @@ exports.broadcastEmail = async (req, res) => {
             </div>
             <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;" />
             <p style="color: #666; font-size: 12px; text-align: center;">
-              © 2026 S-Auth. All rights reserved.
+              © 2026 Starviel. All rights reserved.
             </p>
           </div>
         </body>
@@ -1126,10 +1126,52 @@ exports.devDeleteApp = async (req, res) => {
   }
 };
 
+exports.logout = async (req, res) => {
+  try {
+    const jti = req.user?.jti;
+    if (jti) {
+      const exp = req.user?.exp;
+      const expiresAt = exp ? new Date(exp * 1000) : new Date(Date.now() + 3600000);
+      await tokenBlacklist.add(jti, expiresAt);
+    }
+
+    await auditLogger.log('LOGOUT', {
+      userId: req.user?.sub,
+      email: req.user?.email,
+      ip: req.ip || req.connection.remoteAddress
+    });
+
+    res.json({ success: true, message: 'Logged out successfully' });
+  } catch (err) {
+    console.error('Logout error:', err);
+    res.status(500).json({ error: 'Failed to logout' });
+  }
+};
+
+exports.refreshToken = async (req, res) => {
+  try {
+    const { refresh_token } = req.body;
+    if (!refresh_token) {
+      return res.status(400).json({ error: 'refresh_token is required' });
+    }
+    const result = await AuthService.exchangeRefreshToken(refresh_token);
+    await auditLogger.log('TOKEN_REFRESHED', {
+      userId: result.user.id,
+      email: result.user.email,
+      ip: req.ip || req.connection.remoteAddress
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('Refresh token error:', err);
+    const status = err.message.includes('expired') ? 401 : 400;
+    res.status(status).json({ error: err.message });
+  }
+};
+
 exports.refreshCors = async (req, res) => {
   try {
     await securityConfig.refreshCorsOrigins();
-    res.json({ success: true, origins: securityConfig.corsWhitelist });
+    res.json({ success: true, origins: securityConfig.allowedCorsOrigins });
   } catch (err) {
     console.error('Refresh CORS error:', err);
     res.status(500).json({ error: err.message });

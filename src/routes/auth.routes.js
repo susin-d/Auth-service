@@ -8,9 +8,19 @@ const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const { protect, requireAdmin } = require('../middleware/auth.middleware');
 const { signupValidation, signinValidation, resendVerificationValidation } = require('../middleware/validator.middleware');
+const rateLimit = require('express-rate-limit');
+
+const signupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many signup attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip || req.connection.remoteAddress
+});
 
 // Public Routes
-router.post('/signup', signupValidation, authController.register);
+router.post('/signup', signupLimiter, signupValidation, authController.register);
 router.post('/signin', signinValidation, authController.login);
 router.get('/verify-email', authController.verifyEmail);
 router.post('/resend-verification', resendVerificationValidation, authController.resendVerification);
@@ -23,6 +33,10 @@ router.post('/complete-verification', protect, authController.completeVerificati
 router.get('/profile', protect, authController.getProfile);
 router.put('/profile', protect, authController.updateProfile);
 router.delete('/delete-account', protect, authController.removeAccount);
+router.post('/logout', protect, authController.logout);
+
+// Token Refresh (no auth required — uses refresh token from body)
+router.post('/refresh', authController.refreshToken);
 
 // Admin-only Routes
 router.post('/broadcast-email', protect, requireAdmin, authController.broadcastEmail);
