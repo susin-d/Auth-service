@@ -9,6 +9,7 @@ const EmailService = require('../services/email.service');
 const loginTracker = require('../utils/login.tracker');
 const auditLogger = require('../utils/audit.logger');
 const securityConfig = require('../config/security.config');
+const securityConfig = require('../config/security.config');
 const db = require('../config/db');
 
 exports.register = async (req, res) => {
@@ -1122,6 +1123,16 @@ exports.devDeleteApp = async (req, res) => {
     console.error('Dev delete app error:', err);
     const status = err.message.includes('not found') ? 404 : 500;
     res.status(status).json({ error: err.message });
+  }
+};
+
+exports.refreshCors = async (req, res) => {
+  try {
+    await securityConfig.refreshCorsOrigins();
+    res.json({ success: true, origins: securityConfig.corsWhitelist });
+  } catch (err) {
+    console.error('Refresh CORS error:', err);
+    res.status(500).json({ error: err.message });
   }
 };
 

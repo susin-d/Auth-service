@@ -35,6 +35,7 @@ router.delete('/admin/users/:userId', protect, requireAdmin, authController.dele
 router.post('/admin/oauth-clients', protect, requireAdmin, authController.registerOAuthClient);
 router.get('/admin/oauth-clients', protect, requireAdmin, authController.listOAuthClients);
 router.delete('/admin/oauth-clients/:clientId', protect, requireAdmin, authController.deleteOAuthClient);
+router.post('/admin/refresh-cors', protect, requireAdmin, authController.refreshCors);
 
 // Developer: Self-service OAuth App Management (any authenticated user)
 router.post('/developer/apps', protect, authController.devRegisterApp);

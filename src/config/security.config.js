@@ -1,9 +1,6 @@
-/**
- * Security Configuration - v1.0.1
- * Centralized security settings for production deployment
- */
+const OAuthService = require('../services/oauth.service');
 
-module.exports = {
+const config = {
   // Password policy
   password: {
     minLength: 8,
@@ -16,8 +13,8 @@ module.exports = {
   // Failed login tracking
   failedLoginAttempts: {
     maxAttempts: 5,
-    lockoutDuration: 15 * 60 * 1000, // 15 minutes in milliseconds
-    resetAfter: 60 * 60 * 1000 // Reset counter after 1 hour
+    lockoutDuration: 15 * 60 * 1000,
+    resetAfter: 60 * 60 * 1000
   },
 
   // JWT settings
@@ -34,11 +31,26 @@ module.exports = {
     domain: process.env.COOKIE_DOMAIN || undefined
   },
 
-  // CORS whitelist - comma-separated list from environment
-  corsWhitelist: process.env.CORS_WHITELIST 
+  // CORS origins — starts with env var, refreshed from DB on startup
+  corsWhitelist: process.env.CORS_WHITELIST
     ? process.env.CORS_WHITELIST.split(',').map(url => url.trim())
     : [],
 
-  // Add localhost for development
-  isDevelopment: process.env.NODE_ENV !== 'production'
+  isDevelopment: process.env.NODE_ENV !== 'production',
+
+  // Refresh allowed origins from registered OAuth clients in DB
+  async refreshCorsOrigins() {
+    try {
+      const dbOrigins = await OAuthService.getAllowedOrigins();
+      const envOrigins = process.env.CORS_WHITELIST
+        ? process.env.CORS_WHITELIST.split(',').map(url => url.trim()).filter(Boolean)
+        : [];
+      this.corsWhitelist = [...new Set([...envOrigins, ...dbOrigins])];
+      console.log(`✅ CORS origins refreshed: ${this.corsWhitelist.length} origins`);
+    } catch (err) {
+      console.warn('⚠️ Could not refresh CORS origins from DB:', err.message);
+    }
+  }
 };
+
+module.exports = config;

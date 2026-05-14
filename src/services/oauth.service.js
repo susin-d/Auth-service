@@ -7,7 +7,6 @@ const db = require('../config/db');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const securityConfig = require('../config/security.config');
 
 const AUTH_CODE_EXPIRY = 60 * 1000; // 60 seconds
 const OAUTH_TOKEN_EXPIRY = '1h';
@@ -263,6 +262,28 @@ class OAuthService {
   /**
    * Get user info from a valid access token (for /oauth/userinfo)
    */
+  /**
+   * Get allowed CORS origins from all active OAuth clients.
+   * Extracts origin (protocol + host) from each redirect_uri.
+   */
+  async getAllowedOrigins() {
+    const result = await db.query(
+      `SELECT redirect_uris FROM oauth_clients WHERE is_active = true`
+    );
+    const origins = new Set();
+    for (const row of result.rows) {
+      for (const uri of row.redirect_uris) {
+        try {
+          const url = new URL(uri);
+          origins.add(`${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ''}`);
+        } catch {
+          // skip invalid URIs
+        }
+      }
+    }
+    return [...origins];
+  }
+
   getUserInfoFromToken(decoded) {
     const userInfo = {
       sub: decoded.sub

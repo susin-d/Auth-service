@@ -74,6 +74,8 @@ const initDB = async () => {
     // Simple query to verify connection
     await db.query('SELECT NOW()');
     console.log('✅ Database Connection: Verified (Neon PostgreSQL)');
+    // Load CORS origins from registered OAuth clients
+    await securityConfig.refreshCorsOrigins();
   } catch (err) {
     console.error('❌ Database Connection Error:', err.message);
     process.exit(1);
