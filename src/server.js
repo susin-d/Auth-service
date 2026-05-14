@@ -145,7 +145,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 6. START SERVER
+// 6. START SERVER / EXPORT FOR VERCEL
 const PORT = process.env.PORT || 3000;
 
 const startServer = async (retries = 5) => {
@@ -169,4 +169,10 @@ const startServer = async (retries = 5) => {
   }
 };
 
-startServer();
+if (process.env.VERCEL !== '1') {
+  startServer();
+} else {
+  initDB().catch(err => console.error('❌ Vercel DB init error:', err.message));
+}
+
+module.exports = app;
