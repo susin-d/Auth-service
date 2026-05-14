@@ -1,0 +1,40 @@
+{
+  "name": "s-auth",
+  "version": "1.1.0",
+  "description": "Authentication microservice with JWT, Google OAuth, email verification, and comprehensive security features",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "test": "node test.js",
+    "test:email": "node scripts/test-email.js",
+    "test:production": "node scripts/test-production.js"
+  },
+  "keywords": [
+    "authentication",
+    "jwt",
+    "neon",
+    "postgresql",
+    "node-js",
+    "google-oauth",
+    "audit-logging"
+  ],
+  "author": "Susindran",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@getbrevo/brevo": "^3.0.1",
+    "axios": "^1.13.5",
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1",
+    "express-validator": "^7.3.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.10.1",
+    "pg": "^8.20.0",
+    "validator": "^13.15.26"
+  }
+}

@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>S-Auth — Secure Identity for Every App</title>
+  <meta name="description" content="Add 'Sign in with S-Auth' to your application in minutes. Enterprise-grade authentication with OAuth2, PKCE, and single sign-on.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary: hsl(262, 83%, 58%);
+      --primary-light: hsl(262, 83%, 68%);
+      --primary-glow: hsla(262, 83%, 58%, 0.3);
+      --bg: #050507;
+      --surface: rgba(255, 255, 255, 0.04);
+      --surface-hover: rgba(255, 255, 255, 0.07);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-bright: rgba(255, 255, 255, 0.15);
+      --text: #f0f0f5;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --success: #10b981;
+      --blue: #3b82f6;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Liquid Background */
+    .liquid-bg {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      z-index: -1; pointer-events: none;
+    }
+    .blob {
+      position: absolute; border-radius: 50%;
+      filter: blur(100px); opacity: 0.45;
+      animation: drift 25s infinite alternate ease-in-out;
+    }
+    .blob-1 { width: 700px; height: 700px; background: hsla(262,83%,58%,0.35); top: -200px; left: -200px; }
+    .blob-2 { width: 800px; height: 800px; background: hsla(210,100%,50%,0.2); bottom: -300px; right: -250px; animation-delay:-8s; }
+    .blob-3 { width: 500px; height: 500px; background: hsla(280,80%,60%,0.15); top: 50%; left: 40%; animation-delay:-15s; animation-duration:30s; }
+    .blob-4 { width: 400px; height: 400px; background: hsla(320,70%,50%,0.12); top: 30%; right: 10%; animation-delay:-20s; }
+    @keyframes drift {
+      0% { transform: translate(0,0) scale(1); }
+      33% { transform: translate(60px,100px) scale(1.1); }
+      66% { transform: translate(-40px,60px) scale(0.9); }
+      100% { transform: translate(0,0) scale(1); }
+    }
+
+    /* Container */
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 2rem; }
+
+    /* Glass */
+    .glass {
+      background: var(--surface);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      border-radius: 1.25rem;
+    }
+
+    /* ========== NAV ========== */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(5, 5, 7, 0.6);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      display: flex; justify-content: space-between; align-items: center;
+      max-width: 1200px; margin: 0 auto; padding: 1rem 2rem;
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 0.75rem;
+      text-decoration: none; color: var(--text);
+    }
+    .nav-brand img { width: 36px; height: 36px; border-radius: 8px; }
+    .nav-brand span { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.5px; }
+    .nav-links { display: flex; gap: 2rem; align-items: center; }
+    .nav-links a {
+      color: var(--text-muted); text-decoration: none; font-size: 0.9375rem;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+      padding: 0.75rem 1.75rem; border-radius: 0.75rem; font-weight: 600;
+      font-size: 0.9375rem; cursor: pointer; transition: all 0.25s; border: none;
+      text-decoration: none;
+    }
+    .btn-primary {
+      background: var(--primary); color: #fff;
+      box-shadow: 0 0 30px var(--primary-glow), 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .btn-primary:hover { filter: brightness(1.15); transform: translateY(-2px); box-shadow: 0 0 40px var(--primary-glow); }
+    .btn-ghost {
+      background: transparent; color: var(--text); border: 1px solid var(--border-bright);
+    }
+    .btn-ghost:hover { background: var(--surface-hover); border-color: var(--primary); }
+    .btn-sm { padding: 0.5rem 1.25rem; font-size: 0.8125rem; border-radius: 0.5rem; }
+
+    /* ========== HERO ========== */
+    .hero {
+      min-height: 100vh; display: flex; align-items: center;
+      padding-top: 5rem; position: relative;
+    }
+    .hero-inner {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 4rem;
+      align-items: center; width: 100%;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.375rem 1rem; border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2);
+      color: var(--success); font-size: 0.8125rem; font-weight: 500;
+      margin-bottom: 1.5rem;
+    }
+    .hero-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--success); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    .hero h1 {
+      font-size: 4rem; font-weight: 800; letter-spacing: -2px; line-height: 1.05;
+      margin-bottom: 1.5rem;
+      background: linear-gradient(135deg, #fff 0%, var(--primary-light) 50%, var(--blue) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p { font-size: 1.125rem; color: var(--text-muted); max-width: 500px; margin-bottom: 2rem; line-height: 1.7; }
+    .hero-buttons { display: flex; gap: 1rem; flex-wrap: wrap; }
+
+    /* Hero Code Card */
+    .hero-card {
+      padding: 2rem; position: relative; overflow: hidden;
+    }
+    .hero-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--primary), var(--blue), var(--primary));
+    }
+    .code-header {
+      display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.25rem;
+      padding-bottom: 1rem; border-bottom: 1px solid var(--border);
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-green { background: #10b981; }
+    .code-header span { margin-left: auto; font-size: 0.75rem; color: var(--text-dim); }
+
+    pre {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.8125rem; line-height: 1.8; overflow-x: auto;
+      color: var(--text-muted);
+    }
+    pre .kw { color: #c084fc; }
+    pre .str { color: #34d399; }
+    pre .cm { color: var(--text-dim); }
+    pre .fn { color: #60a5fa; }
+    pre .num { color: #fbbf24; }
+
+    /* ========== FEATURES ========== */
+    .section { padding: 6rem 0; }
+    .section-header { text-align: center; margin-bottom: 4rem; }
+    .section-header h2 {
+      font-size: 2.5rem; font-weight: 700; letter-spacing: -1px; margin-bottom: 1rem;
+    }
+    .section-header p { color: var(--text-muted); font-size: 1.0625rem; max-width: 600px; margin: 0 auto; }
+
+    .features-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;
+    }
+    .feature-card {
+      padding: 2rem; transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+    }
+    .feature-card:hover { transform: translateY(-4px); border-color: var(--border-bright); background: var(--surface-hover); }
+    .feature-icon {
+      width: 48px; height: 48px; border-radius: 14px; display: flex;
+      align-items: center; justify-content: center; font-size: 1.375rem;
+      margin-bottom: 1.25rem;
+    }
+    .feature-card h3 { font-size: 1.125rem; font-weight: 600; margin-bottom: 0.5rem; }
+    .feature-card p { color: var(--text-muted); font-size: 0.9375rem; line-height: 1.6; }
+
+    /* ========== HOW IT WORKS ========== */
+    .steps {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem;
+      position: relative;
+    }
+    .steps::before {
+      content: ''; position: absolute; top: 36px; left: 60px; right: 60px; height: 2px;
+      background: linear-gradient(90deg, var(--primary), var(--blue));
+      opacity: 0.3;
+    }
+    .step { text-align: center; position: relative; }
+    .step-num {
+      width: 72px; height: 72px; border-radius: 50%; margin: 0 auto 1.25rem;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem; font-weight: 700;
+      background: var(--surface); border: 2px solid var(--primary);
+      color: var(--primary);
+    }
+    .step h4 { font-weight: 600; margin-bottom: 0.375rem; }
+    .step p { color: var(--text-muted); font-size: 0.875rem; }
+
+    /* ========== CODE EXAMPLE ========== */
+    .code-section {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 3rem;
+      align-items: center;
+    }
+    .code-section .glass { padding: 2rem; }
+    .code-section h2 { font-size: 2rem; font-weight: 700; margin-bottom: 1rem; letter-spacing: -0.5px; }
+    .code-section p { color: var(--text-muted); margin-bottom: 1.5rem; }
+    .code-section ul { list-style: none; display: flex; flex-direction: column; gap: 0.75rem; }
+    .code-section li {
+      display: flex; align-items: center; gap: 0.75rem;
+      color: var(--text-muted); font-size: 0.9375rem;
+    }
+    .code-section li::before {
+      content: '✓'; width: 24px; height: 24px; border-radius: 50%;
+      background: rgba(16,185,129,0.1); color: var(--success);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; flex-shrink: 0;
+    }
+
+    /* ========== CTA ========== */
+    .cta {
+      text-align: center; padding: 6rem 2rem;
+      border-radius: 2rem; margin: 4rem 0;
+      background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(59,130,246,0.1));
+      border: 1px solid rgba(124,58,237,0.2);
+      position: relative; overflow: hidden;
+    }
+    .cta::before {
+      content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+      background: radial-gradient(circle, hsla(262,83%,58%,0.08) 0%, transparent 70%);
+      animation: rotate 20s linear infinite;
+    }
+    @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .cta h2 { font-size: 2.5rem; font-weight: 700; letter-spacing: -1px; margin-bottom: 1rem; position: relative; }
+    .cta p { color: var(--text-muted); font-size: 1.0625rem; margin-bottom: 2rem; position: relative; }
+    .cta .btn { position: relative; }
+
+    /* ========== FOOTER ========== */
+    footer {
+      border-top: 1px solid var(--border); padding: 3rem 0;
+      text-align: center; color: var(--text-dim); font-size: 0.875rem;
+    }
+    footer a { color: var(--primary-light); text-decoration: none; }
+
+    /* ========== RESPONSIVE ========== */
+    @media (max-width: 768px) {
+      .hero-inner { grid-template-columns: 1fr; text-align: center; }
+      .hero h1 { font-size: 2.5rem; }
+      .hero p { margin: 0 auto 2rem; }
+      .hero-buttons { justify-content: center; }
+      .hero-card { display: none; }
+      .features-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr 1fr; }
+      .steps::before { display: none; }
+      .code-section { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="liquid-bg">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+  <div class="blob blob-4"></div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-inner">
+    <a href="#" class="nav-brand">
+      <img src="/logo.png" alt="S-Auth">
+      <span>S-Auth</span>
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How It Works</a>
+      <a href="#integration">Integration</a>
+      <a href="/oauth/authorize" class="btn btn-sm btn-ghost">Try Demo</a>
+      <a href="/api/v1/auth" class="btn btn-sm btn-primary">API Docs</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-inner">
+      <div>
+        <div class="hero-badge">OAuth2 + PKCE Ready</div>
+        <h1>Identity,<br>Simplified.</h1>
+        <p>Add secure authentication to any application with a single integration. OAuth2, JWT, Google SSO, email verification — all out of the box.</p>
+        <div class="hero-buttons">
+          <a href="#integration" class="btn btn-primary">Get Started</a>
+          <a href="#how-it-works" class="btn btn-ghost">How It Works</a>
+        </div>
+      </div>
+
+      <div class="hero-card glass">
+        <div class="code-header">
+          <div class="dot dot-red"></div>
+          <div class="dot dot-yellow"></div>
+          <div class="dot dot-green"></div>
+          <span>callback.js</span>
+        </div>
+        <pre><span class="cm">// Exchange code for user profile</span>
+<span class="kw">const</span> token = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">'/oauth/token'</span>, {
+  method: <span class="str">'POST'</span>,
+  body: JSON.<span class="fn">stringify</span>({
+    grant_type: <span class="str">'authorization_code'</span>,
+    code: authCode,
+    client_id: <span class="str">'sauth_a1b2c3...'</span>,
+    client_secret: <span class="str">'sk_live_...'</span>
+  })
+});
+
+<span class="kw">const</span> user = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">'/oauth/userinfo'</span>, {
+  headers: { Authorization: <span class="str">`Bearer ${</span>token<span class="str">}`</span> }
+});
+
+console.<span class="fn">log</span>(user);
+<span class="cm">// { sub: "uuid", email: "...", name: "..." }</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="section" id="features">
+  <div class="container">
+    <div class="section-header">
+      <h2>Everything You Need</h2>
+      <p>Enterprise-grade security with developer-friendly simplicity. Zero lock-in, full control.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card glass">
+        <div class="feature-icon" style="background:rgba(124,58,237,0.1);color:#a78bfa">🔐</div>
+        <h3>OAuth2 Authorization Server</h3>
+        <p>Standard-compliant Authorization Code flow. Works with any OAuth2 client library, in any language.</p>
+      </div>
+      <div class="feature-card glass">
+        <div class="feature-icon" style="background:rgba(59,130,246,0.1);color:#60a5fa">🛡️</div>
+        <h3>PKCE for Public Clients</h3>
+        <p>Secure authentication for SPAs and mobile apps without exposing client secrets. Modern security by default.</p>
+      </div>
+      <div class="feature-card glass">
+        <div class="feature-icon" style="background:rgba(16,185,129,0.1);color:#34d399">🔑</div>
+        <h3>JWT Access Tokens</h3>
+        <p>Stateless, verifiable tokens with customizable scopes. Decode user identity without extra API calls.</p>
+      </div>
+      <div class="feature-card glass">
+        <div class="feature-icon" style="background:rgba(245,158,11,0.1);color:#fbbf24">🌐</div>
+        <h3>Google SSO Built-in</h3>
+        <p>Users can sign in with their Google account. Automatic account linking and profile syncing included.</p>
+      </div>
+      <div class="feature-card glass">
+        <div class="feature-icon" style="background:rgba(239,68,68,0.1);color:#f87171">📧</div>
+        <h3>Email Verification</h3>
+        <p>Branded verification emails via Brevo SMTP. Welcome emails, account deletion confirmations, and broadcasts.</p>
+      </div>
+      <div class="feature-card glass">
+        <div class="feature-icon" style="background:rgba(168,85,247,0.1);color:#c084fc">📊</div>
+        <h3>Admin Dashboard</h3>
+        <p>Manage users, register OAuth clients, and monitor security events through a beautiful glassmorphic UI.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="section" id="how-it-works">
+  <div class="container">
+    <div class="section-header">
+      <h2>Four Steps to SSO</h2>
+      <p>Integrate "Sign in with S-Auth" into your app in under 10 minutes.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h4>Register Your App</h4>
+        <p>Get a client_id and secret from the admin dashboard.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h4>Redirect to S-Auth</h4>
+        <p>Send users to /oauth/authorize with your client_id.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h4>User Authenticates</h4>
+        <p>S-Auth handles login, consent, and redirects back with a code.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <h4>Exchange for Token</h4>
+        <p>POST to /oauth/token to get a JWT with user info.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- INTEGRATION CODE -->
+<section class="section" id="integration">
+  <div class="container">
+    <div class="code-section">
+      <div>
+        <h2>Drop-in Integration</h2>
+        <p>Works with every framework and language. Standard OAuth2 — no proprietary SDKs required.</p>
+        <ul>
+          <li>Node.js, Python, Go, Ruby, PHP</li>
+          <li>React, Vue, Svelte, Angular</li>
+          <li>iOS, Android, Flutter, React Native</li>
+          <li>Any OAuth2-compatible library</li>
+        </ul>
+        <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+          <a href="/docs/OAUTH-PROVIDER.md" class="btn btn-primary btn-sm" target="_blank">Read the Docs</a>
+          <a href="https://github.com" class="btn btn-ghost btn-sm" target="_blank">View on GitHub</a>
+        </div>
+      </div>
+      <div class="glass" style="padding: 2rem;">
+        <div class="code-header">
+          <div class="dot dot-red"></div>
+          <div class="dot dot-yellow"></div>
+          <div class="dot dot-green"></div>
+          <span>login-button.jsx</span>
+        </div>
+        <pre><span class="kw">function</span> <span class="fn">SignInWithSAuth</span>() {
+  <span class="kw">const</span> handleLogin = () => {
+    <span class="kw">const</span> params = <span class="kw">new</span> <span class="fn">URLSearchParams</span>({
+      client_id: <span class="str">'sauth_a1b2c3...'</span>,
+      redirect_uri: <span class="str">'http://localhost:3000/callback'</span>,
+      response_type: <span class="str">'code'</span>,
+      scope: <span class="str">'profile email'</span>
+    });
+    window.location.href =
+      <span class="str">`https://auth.susindran.in/oauth/authorize?</span>${params}<span class="str">`</span>;
+  };
+
+  <span class="kw">return</span> (
+    &lt;<span class="fn">button</span> onClick={handleLogin}&gt;
+      🔐 Sign in with S-Auth
+    &lt;/<span class="fn">button</span>&gt;
+  );
+}</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="container">
+  <div class="cta">
+    <h2>Ready to Authenticate?</h2>
+    <p>Start building with S-Auth today. No credit card. No lock-in. Just security.</p>
+    <a href="#integration" class="btn btn-primary">Get Your Client ID →</a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <p>© 2026 S-Auth by <a href="https://susindran.in">Susindran</a> · Starviel Authentication Infrastructure</p>
+  </div>
+</footer>
+
+</body>
+</html>

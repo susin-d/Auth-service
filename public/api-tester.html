@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Starviel Auth - API Tester</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            font-weight: 600;
+        }
+        
+        .card-body {
+            padding: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 500;
+            font-size: 13px;
+        }
+        
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 13px;
+            resize: vertical;
+        }
+        
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .response-section {
+            margin-top: 30px;
+        }
+        
+        .response-box {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .response-success {
+            background: #f0f9ff;
+            border-color: #0ea5e9;
+            color: #0c4a6e;
+        }
+        
+        .response-error {
+            background: #fef2f2;
+            border-color: #ef4444;
+            color: #7f1d1d;
+        }
+        
+        .token-storage {
+            background: #f0f9ff;
+            border: 1px solid #0ea5e9;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+        
+        .token-storage strong {
+            color: #0c4a6e;
+        }
+        
+        .token-value {
+            background: white;
+            padding: 5px;
+            border-radius: 3px;
+            margin-top: 5px;
+            font-family: monospace;
+            word-break: break-all;
+            max-height: 60px;
+            overflow-y: auto;
+        }
+        
+        .section-title {
+            color: #667eea;
+            font-weight: 600;
+            margin-top: 30px;
+            margin-bottom: 20px;
+            font-size: 18px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .method-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+            color: white;
+            margin-right: 8px;
+        }
+        
+        .method-get { background: #3b82f6; }
+        .method-post { background: #10b981; }
+        .method-put { background: #f59e0b; }
+        .method-delete { background: #ef4444; }
+
+        .password-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .password-wrapper input {
+            margin: 0;
+            width: 100%;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 10px;
+            background: none;
+            border: none;
+            color: #667eea;
+            cursor: pointer;
+            padding: 0;
+            width: auto;
+            font-size: 18px;
+            font-weight: bold;
+            transition: color 0.2s;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .password-toggle:hover {
+            color: #764ba2;
+            transform: none !important;
+        }
+
+        .password-toggle:active {
+            transform: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔐 Starviel Auth - API Tester</h1>
+            <p class="subtitle">Comprehensive endpoint testing tool for the authentication microservice</p>
+        </header>
+
+        <div class="response-section">
+            <div class="token-storage">
+                <strong>🔑 Authentication Token:</strong>
+                <div class="token-value" id="tokenDisplay">No token yet. Sign in to get one.</div>
+                <button id="clearTokenBtn" style="margin-top: 10px; font-size: 12px; padding: 5px 10px;">Clear Token</button>
+            </div>
+        </div>
+
+        <!-- PUBLIC ENDPOINTS -->
+        <h2 class="section-title">📋 Public Endpoints</h2>
+        <div class="grid">
+            <!-- Sign Up -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-post">POST</span>
+                    /api/v1/auth/signup
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" class="signup-email" placeholder="user@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <div class="password-wrapper">
+                            <input type="password" class="signup-password" placeholder="Enter password">
+                            <button type="button" class="password-toggle" data-target="signup-password">👁</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Full Name</label>
+                        <input type="text" class="signup-name" placeholder="John Doe">
+                    </div>
+                    <button class="btn-signup">Sign Up</button>
+                </div>
+            </div>
+
+            <!-- Sign In -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-post">POST</span>
+                    /api/v1/auth/signin
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" class="signin-email" placeholder="user@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <div class="password-wrapper">
+                            <input type="password" class="signin-password" placeholder="Enter password">
+                            <button type="button" class="password-toggle" data-target="signin-password">👁</button>
+                        </div>
+                    </div>
+                    <button class="btn-signin">Sign In</button>
+                </div>
+            </div>
+
+            <!-- Verify Email -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-get">GET</span>
+                    /api/v1/auth/verify-email
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Verification Token</label>
+                        <input type="text" class="verify-token" placeholder="Token from email link">
+                    </div>
+                    <button class="btn-verify-email">Verify Email</button>
+                </div>
+            </div>
+
+            <!-- Resend Verification -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-post">POST</span>
+                    /api/v1/auth/resend-verification
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" class="resend-email" placeholder="user@example.com">
+                    </div>
+                    <button class="btn-resend-verification">Resend Verification</button>
+                </div>
+            </div>
+
+            <!-- Exchange Code -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-post">POST</span>
+                    /api/v1/auth/exchange-code
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Authorization Code</label>
+                        <input type="text" class="exchange-code" placeholder="Authorization code">
+                    </div>
+                    <div class="form-group">
+                        <label>Code Verifier (PKCE)</label>
+                        <input type="text" class="exchange-verifier" placeholder="Code verifier">
+                    </div>
+                    <button class="btn-exchange-code">Exchange Code</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PROTECTED ENDPOINTS -->
+        <h2 class="section-title">🔒 Protected Endpoints (Requires Token)</h2>
+        <div class="grid">
+            <!-- Get Profile -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-get">GET</span>
+                    /api/v1/auth/profile
+                </div>
+                <div class="card-body">
+                    <p style="color: #666; font-size: 13px; margin-bottom: 15px;">Retrieve your profile information</p>
+                    <button class="btn-get-profile">Get Profile</button>
+                </div>
+            </div>
+
+            <!-- Update Profile -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-put">PUT</span>
+                    /api/v1/auth/profile
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Full Name</label>
+                        <input type="text" class="update-name" placeholder="New name">
+                    </div>
+                    <div class="form-group">
+                        <label>Bio (optional)</label>
+                        <input type="text" class="update-bio" placeholder="Your bio">
+                    </div>
+                    <button class="btn-update-profile">Update Profile</button>
+                </div>
+            </div>
+
+            <!-- Delete Account -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-delete">DELETE</span>
+                    /api/v1/auth/delete-account
+                </div>
+                <div class="card-body">
+                    <p style="color: #c41e3a; font-size: 13px; margin-bottom: 15px;">⚠️ This action cannot be undone</p>
+                    <button class="btn-delete-account" style="background: #ef4444;">Delete My Account</button>
+                </div>
+            </div>
+
+            <!-- Developer: List Apps -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-get">GET</span>
+                    /api/v1/auth/developer/apps
+                </div>
+                <div class="card-body">
+                    <p style="color: #666; font-size: 13px; margin-bottom: 15px;">List all your registered apps</p>
+                    <button class="btn-dev-list-apps">List My Apps</button>
+                </div>
+            </div>
+
+            <!-- Developer: Register App -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-post">POST</span>
+                    /api/v1/auth/developer/apps
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>App Name</label>
+                        <input type="text" class="dev-app-name" placeholder="My Application">
+                    </div>
+                    <div class="form-group">
+                        <label>Redirect URI</label>
+                        <input type="text" class="dev-redirect-uri" placeholder="https://myapp.com/callback">
+                    </div>
+                    <button class="btn-dev-register-app">Register App</button>
+                </div>
+            </div>
+
+            <!-- Developer: Delete App -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-delete">DELETE</span>
+                    /api/v1/auth/developer/apps/:clientId
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Client ID</label>
+                        <input type="text" class="dev-delete-clientid" placeholder="Client ID">
+                    </div>
+                    <button class="btn-dev-delete-app">Delete App</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ADMIN ENDPOINTS -->
+        <h2 class="section-title">👑 Admin Endpoints (Admin Token Required)</h2>
+        <div class="grid">
+            <!-- List Users -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-get">GET</span>
+                    /api/v1/auth/admin/users
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Page (optional)</label>
+                        <input type="number" class="admin-users-page" placeholder="1" value="1">
+                    </div>
+                    <div class="form-group">
+                        <label>Limit (optional)</label>
+                        <input type="number" class="admin-users-limit" placeholder="10" value="10">
+                    </div>
+                    <button class="btn-admin-list-users">Get Users</button>
+                </div>
+            </div>
+
+            <!-- Get User by ID -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-get">GET</span>
+                    /api/v1/auth/admin/users/:userId
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>User ID</label>
+                        <input type="text" class="admin-user-id" placeholder="User ID">
+                    </div>
+                    <button class="btn-admin-get-user">Get User</button>
+                </div>
+            </div>
+
+            <!-- List OAuth Clients -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-get">GET</span>
+                    /api/v1/auth/admin/oauth-clients
+                </div>
+                <div class="card-body">
+                    <p style="color: #666; font-size: 13px; margin-bottom: 15px;">List all OAuth clients</p>
+                    <button class="btn-admin-list-oauth">List OAuth Clients</button>
+                </div>
+            </div>
+
+            <!-- Register OAuth Client -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-post">POST</span>
+                    /api/v1/auth/admin/oauth-clients
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Client Name</label>
+                        <input type="text" class="admin-oauth-name" placeholder="Client Name">
+                    </div>
+                    <div class="form-group">
+                        <label>Redirect URIs (comma-separated)</label>
+                        <textarea class="admin-oauth-redirects" placeholder="https://example.com/callback"></textarea>
+                    </div>
+                    <button class="btn-admin-register-oauth">Register Client</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- STARVIEL OAUTH PROVIDER -->
+        <h2 class="section-title">🌐 Starviel OAuth Provider - "Continue with Starviel"</h2>
+        <p style="color: #666; font-size: 14px; margin-bottom: 20px; padding: 15px; background: #f0f9ff; border-radius: 5px; border-left: 4px solid #667eea;">
+            Allow other apps to authenticate users through Starviel. Register your app, then use the OAuth flow below to test.
+        </p>
+        <div class="grid">
+            <!-- Register Test App -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-post">POST</span>
+                    Register Test OAuth App
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>App Name</label>
+                        <input type="text" class="oauth-test-app-name" placeholder="My Test App">
+                    </div>
+                    <div class="form-group">
+                        <label>Redirect URI</label>
+                        <input type="text" class="oauth-test-redirect-uri" placeholder="http://localhost:3000/api-tester.html">
+                    </div>
+                    <button class="btn-oauth-test-register">Register App</button>
+                    <p style="font-size: 12px; color: #666; margin-top: 10px;">Requires authentication token</p>
+                </div>
+            </div>
+
+            <!-- Start Authorization Flow -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-get">GET</span>
+                    /oauth/authorize
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Client ID</label>
+                        <input type="text" class="oauth-client-id" placeholder="Client ID from registration">
+                    </div>
+                    <div class="form-group">
+                        <label>Redirect URI</label>
+                        <input type="text" class="oauth-redirect-uri" placeholder="http://localhost:3000/api-tester.html">
+                    </div>
+                    <div class="form-group">
+                        <label>Scope (optional)</label>
+                        <input type="text" class="oauth-scope" placeholder="openid profile email" value="openid profile email">
+                    </div>
+                    <button class="btn-oauth-authorize">Start OAuth Flow</button>
+                    <p style="font-size: 12px; color: #666; margin-top: 10px;">Opens login & consent page in new window</p>
+                </div>
+            </div>
+
+            <!-- Exchange Code for Token -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-post">POST</span>
+                    /oauth/token
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Client ID</label>
+                        <input type="text" class="oauth-token-client-id" placeholder="Client ID">
+                    </div>
+                    <div class="form-group">
+                        <label>Client Secret</label>
+                        <input type="password" class="oauth-token-client-secret" placeholder="Client Secret">
+                    </div>
+                    <div class="form-group">
+                        <label>Authorization Code</label>
+                        <input type="text" class="oauth-auth-code" placeholder="Code from authorize step">
+                    </div>
+                    <button class="btn-oauth-exchange-code">Exchange Code</button>
+                    <p style="font-size: 12px; color: #666; margin-top: 10px;">Get user info from authorization code</p>
+                </div>
+            </div>
+
+            <!-- Get User Info -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="method-badge method-get">GET</span>
+                    /oauth/userinfo
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>Access Token</label>
+                        <input type="password" class="oauth-userinfo-token" placeholder="Access token from /oauth/token">
+                    </div>
+                    <button class="btn-oauth-userinfo">Get User Info</button>
+                    <p style="font-size: 12px; color: #666; margin-top: 10px;">Retrieve authenticated user's profile</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- RESPONSE DISPLAY -->
+        <div class="response-section" id="responseSection" style="display: none;">
+            <h2 class="section-title">📊 Response</h2>
+            <div class="response-box" id="responseBox"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000';
+
+        // Utility Functions
+        function getToken() {
+            return localStorage.getItem('authToken');
+        }
+
+        function setToken(token) {
+            localStorage.setItem('authToken', token);
+            updateTokenDisplay();
+        }
+
+        function clearToken() {
+            localStorage.removeItem('authToken');
+            updateTokenDisplay();
+        }
+
+        function updateTokenDisplay() {
+            const token = getToken();
+            const display = document.getElementById('tokenDisplay');
+            if (token) {
+                display.textContent = token;
+            } else {
+                display.textContent = 'No token yet. Sign in to get one.';
+            }
+        }
+
+        function showResponse(data, isSuccess = true) {
+            const responseBox = document.getElementById('responseBox');
+            const responseSection = document.getElementById('responseSection');
+            responseBox.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+            responseBox.className = 'response-box ' + (isSuccess ? 'response-success' : 'response-error');
+            responseSection.style.display = 'block';
+            responseSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        async function makeRequest(method, endpoint, body = null, useAuth = false) {
+            try {
+                const options = {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                };
+
+                if (useAuth) {
+                    const token = getToken();
+                    if (!token) {
+                        showResponse('❌ Error: No authentication token. Please sign in first.', false);
+                        return null;
+                    }
+                    options.headers['Authorization'] = `Bearer ${token}`;
+                }
+
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                const data = await response.json();
+
+                if (response.ok) {
+                    if (data.token) {
+                        setToken(data.token);
+                    } else if (data.access_token) {
+                        setToken(data.access_token);
+                    }
+                    showResponse(data, true);
+                    return data;
+                } else {
+                    showResponse(data, false);
+                    return null;
+                }
+            } catch (error) {
+                showResponse(`❌ Request failed: ${error.message}`, false);
+                return null;
+            }
+        }
+
+        // Event Listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            updateTokenDisplay();
+
+            // Capture authorization code from URL if redirected from OAuth
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('code')) {
+                const authCode = params.get('code');
+                const codeField = document.querySelector('.oauth-auth-code');
+                if (codeField) {
+                    codeField.value = authCode;
+                    showResponse('✅ Authorization code captured! Ready to exchange for token.', true);
+                }
+            }
+
+            // Password Toggle
+            document.querySelectorAll('.password-toggle').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const targetClass = this.dataset.target;
+                    const input = document.querySelector('.' + targetClass);
+                    if (input) {
+                        if (input.type === 'password') {
+                            input.type = 'text';
+                            this.textContent = '🙈';
+                        } else {
+                            input.type = 'password';
+                            this.textContent = '👁';
+                        }
+                    }
+                });
+            });
+
+            // Clear Token
+            document.getElementById('clearTokenBtn').addEventListener('click', clearToken);
+
+            // Sign Up
+            document.querySelector('.btn-signup').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const email = card.querySelector('.signup-email').value;
+                const password = card.querySelector('.signup-password').value;
+                const fullName = card.querySelector('.signup-name').value;
+                await makeRequest('POST', '/api/v1/auth/signup', { email, password, fullName });
+            });
+
+            // Sign In
+            document.querySelector('.btn-signin').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const email = card.querySelector('.signin-email').value;
+                const password = card.querySelector('.signin-password').value;
+                await makeRequest('POST', '/api/v1/auth/signin', { email, password });
+            });
+
+            // Verify Email
+            document.querySelector('.btn-verify-email').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const token = card.querySelector('.verify-token').value;
+                await makeRequest('GET', `/api/v1/auth/verify-email?token=${token}`);
+            });
+
+            // Resend Verification
+            document.querySelector('.btn-resend-verification').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const email = card.querySelector('.resend-email').value;
+                await makeRequest('POST', '/api/v1/auth/resend-verification', { email });
+            });
+
+            // Exchange Code
+            document.querySelector('.btn-exchange-code').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const code = card.querySelector('.exchange-code').value;
+                const codeVerifier = card.querySelector('.exchange-verifier').value;
+                await makeRequest('POST', '/api/v1/auth/exchange-code', { code, codeVerifier });
+            });
+
+            // Get Profile
+            document.querySelector('.btn-get-profile').addEventListener('click', async function() {
+                await makeRequest('GET', '/api/v1/auth/profile', null, true);
+            });
+
+            // Update Profile
+            document.querySelector('.btn-update-profile').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const fullName = card.querySelector('.update-name').value;
+                const bio = card.querySelector('.update-bio').value;
+                const body = {};
+                if (fullName) body.fullName = fullName;
+                if (bio) body.bio = bio;
+                await makeRequest('PUT', '/api/v1/auth/profile', body, true);
+            });
+
+            // Delete Account
+            document.querySelector('.btn-delete-account').addEventListener('click', async function() {
+                if (confirm('Are you sure? This will permanently delete your account.')) {
+                    await makeRequest('DELETE', '/api/v1/auth/delete-account', null, true);
+                }
+            });
+
+            // Developer: List Apps
+            document.querySelector('.btn-dev-list-apps').addEventListener('click', async function() {
+                await makeRequest('GET', '/api/v1/auth/developer/apps', null, true);
+            });
+
+            // Developer: Register App
+            document.querySelector('.btn-dev-register-app').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const appName = card.querySelector('.dev-app-name').value;
+                const redirectUri = card.querySelector('.dev-redirect-uri').value;
+                await makeRequest('POST', '/api/v1/auth/developer/apps', { appName, redirectUri }, true);
+            });
+
+            // Developer: Delete App
+            document.querySelector('.btn-dev-delete-app').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const clientId = card.querySelector('.dev-delete-clientid').value;
+                await makeRequest('DELETE', `/api/v1/auth/developer/apps/${clientId}`, null, true);
+            });
+
+            // Admin: List Users
+            document.querySelector('.btn-admin-list-users').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const page = card.querySelector('.admin-users-page').value || 1;
+                const limit = card.querySelector('.admin-users-limit').value || 10;
+                await makeRequest('GET', `/api/v1/auth/admin/users?page=${page}&limit=${limit}`, null, true);
+            });
+
+            // Admin: Get User
+            document.querySelector('.btn-admin-get-user').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const userId = card.querySelector('.admin-user-id').value;
+                await makeRequest('GET', `/api/v1/auth/admin/users/${userId}`, null, true);
+            });
+
+            // Admin: List OAuth Clients
+            document.querySelector('.btn-admin-list-oauth').addEventListener('click', async function() {
+                await makeRequest('GET', '/api/v1/auth/admin/oauth-clients', null, true);
+            });
+
+            // Admin: Register OAuth Client
+            document.querySelector('.btn-admin-register-oauth').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const clientName = card.querySelector('.admin-oauth-name').value;
+                const redirectURIsStr = card.querySelector('.admin-oauth-redirects').value;
+                const redirectURIs = redirectURIsStr.split(',').map(u => u.trim());
+                await makeRequest('POST', '/api/v1/auth/admin/oauth-clients', { clientName, redirectURIs }, true);
+            });
+
+            // Starviel OAuth Provider: Register Test App
+            document.querySelector('.btn-oauth-test-register').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const client_name = card.querySelector('.oauth-test-app-name').value;
+                const redirectUri = card.querySelector('.oauth-test-redirect-uri').value;
+                
+                // Store for later use in other OAuth steps
+                const result = await makeRequest('POST', '/api/v1/auth/developer/apps', { client_name, redirect_uris: [redirectUri] }, true);
+                console.log('OAuth register result:', result);
+                if (result && result.client && result.client.client_id) {
+                    // Auto-fill the authorization flow fields
+                    document.querySelector('.oauth-client-id').value = result.client.client_id || '';
+                    document.querySelector('.oauth-redirect-uri').value = redirectUri;
+                    document.querySelector('.oauth-token-client-id').value = result.client.client_id || '';
+                    document.querySelector('.oauth-token-client-secret').value = result.client.client_secret || '';
+                    showResponse('✅ App registered! Client ID and Secret filled in the fields below.', true);
+                }
+            });
+
+            // Starviel OAuth Provider: Start Authorization Flow
+            document.querySelector('.btn-oauth-authorize').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const clientId = card.querySelector('.oauth-client-id').value;
+                const redirectUri = card.querySelector('.oauth-redirect-uri').value;
+                const scope = card.querySelector('.oauth-scope').value;
+
+                if (!clientId || !redirectUri) {
+                    showResponse('❌ Error: Client ID and Redirect URI are required', false);
+                    return;
+                }
+
+                const authUrl = new URL('/oauth/authorize', API_BASE);
+                authUrl.searchParams.set('client_id', clientId);
+                authUrl.searchParams.set('redirect_uri', redirectUri);
+                authUrl.searchParams.set('response_type', 'code');
+                authUrl.searchParams.set('scope', scope);
+                authUrl.searchParams.set('state', Math.random().toString(36).substring(7));
+
+                showResponse('✅ Opening Starviel login page in new window. After login, you\'ll be redirected with an authorization code.', true);
+                window.open(authUrl.toString(), 'starviel_oauth', 'width=500,height=600');
+            });
+
+            // Starviel OAuth Provider: Exchange Code for Token
+            document.querySelector('.btn-oauth-exchange-code').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const clientId = card.querySelector('.oauth-token-client-id').value;
+                const clientSecret = card.querySelector('.oauth-token-client-secret').value;
+                const code = card.querySelector('.oauth-auth-code').value;
+
+                if (!clientId || !clientSecret || !code) {
+                    showResponse('❌ Error: Client ID, Client Secret, and Authorization Code are required', false);
+                    return;
+                }
+
+                const body = {
+                    grant_type: 'authorization_code',
+                    client_id: clientId,
+                    client_secret: clientSecret,
+                    code: code
+                };
+
+                const result = await makeRequest('POST', '/oauth/token', body, false);
+                if (result && result.access_token) {
+                    // Auto-fill the userinfo token field
+                    document.querySelector('.oauth-userinfo-token').value = result.access_token;
+                    showResponse(result, true);
+                }
+            });
+
+            // Starviel OAuth Provider: Get User Info
+            document.querySelector('.btn-oauth-userinfo').addEventListener('click', async function() {
+                const card = this.closest('.card');
+                const token = card.querySelector('.oauth-userinfo-token').value;
+
+                if (!token) {
+                    showResponse('❌ Error: Access Token is required', false);
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`${API_BASE}/oauth/userinfo`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    const data = await response.json();
+                    showResponse(data, response.ok);
+                } catch (error) {
+                    showResponse(`❌ Request failed: ${error.message}`, false);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
